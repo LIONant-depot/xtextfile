@@ -114,23 +114,26 @@ Define composite types to reuse structures.
 
 Example (from unit test):
 ```cpp
-constexpr static std::array Types = 
-{
-    xtextfile::user_defined_types{"V3", "fff"},
-    xtextfile::user_defined_types{"BOOL", "c"},
-    xtextfile::user_defined_types{"STRING", "s"}
-};
-s.AddUserTypes(Types);
+constexpr xtextfile::user_defined_types v3     {"V3", "fff"};
+constexpr xtextfile::user_defined_types quat   {"QUATERNION", "ffff"};
+constexpr xtextfile::user_defined_types random {"RANDOM", "fsd"};
+
+constexpr static std::array Types = { v3, quat, random};
+file.AddUserTypes(Types);
 
 float pos[3] = {0.1f, 0.5f, 0.6f};
-bool valid = true;
-std::string name = "Hello";
-s.Record(err, "TestUserTypes",
-    [&](std::size_t, xtextfile::err& e) 
+float quaternion[4] = {0.1f, 0.2f, 0.3f, 0.4f };
+float a = 22;
+std::string str("Hello");
+int   d = 33;
+
+file.Record(err, "TestUserTypes",
+    [&](xtextfile::err& e) 
     {
-        s.Field(Types[0].m_CRC, "Position", pos[0], pos[1], pos[2]);
-        s.Field(Types[1].m_CRC, "IsValid", valid);
-        s.Field(Types[2].m_CRC, "Name", name);
+        0
+        || s.Field(v3.m_CRC,     "Position", pos[0], pos[1], pos[2]).isError(e)
+        || s.Field(quat.m_CRC,   "Rotation", quaternion[0], quaternion[1], quaternion[2],quaternion[3] ).isError(e)
+        || s.Field(random.m_CRC, "Random",   a, str, d ).isError(e);
     });
 ```
 
@@ -295,22 +298,5 @@ Code snippet (see unit test for full).
 ## Running Tests
 - The `Test()` function writes/reads text and binary files, asserting equality.
 - Files like "TextFileTest.la1.txt" generated for inspection.
-
-
-# xtextfile::stream Documentation
-
-# Overview
-
-The `xtextfile::stream` class is a C++ utility for reading and writing structured data to files in either text or binary format. It is designed to handle serialized data with support for records (groups of data entries), fields (individual data elements), and user-defined types. The class manages error handling, endianness, floating-point representation, and more.
-
-Key features:
-- Supports text (human-readable, but lossy for floats due to text-to-binary conversion) and binary files.
-- User-defined types allow custom structures composed of primitive types (e.g., floats, integers, strings).
-- Records can be labeled or counted, with callbacks for processing multiple entries.
-- Error handling via `err` and `err2` structs, which provide state and message information.
-- CRC32 hashing for type identification and integrity.
-
-**Important Note on Types (from code comments):**
-Text files are lossy for floating-point numbers because they may not survive exact text-to-binary conversion. Supported primitive types in user-defined structures:
 
 ---
