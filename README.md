@@ -7,7 +7,7 @@ It emphasizes minimal code duplication, especially between reading and writing o
 that the same callback functions can often handle both modes with little to no modification—typically just a check 
 for whether you're reading or writing (e.g., via `isReading()` or a passed boolean flag).
 
-# Key Benefits
+# Key Features
 - **Symmetry Between Read and Write**: Unlike many serialization libraries that require separate functions for 
      serialization and deserialization, `xtextfile::stream` uses unified methods like `Record` and `Field`. 
      This minimizes code: you define data layout once in a callback, and it works for both modes. For example,
@@ -23,9 +23,10 @@ for whether you're reading or writing (e.g., via `isReading()` or a passed boole
 - **Binary serialization** With no code changes
 - **No dependencies** Zero dependencies to make it easy to include in your projects
 - **MIT License**: As free as it gets
+- **documentation**: You can find the [documentation here](https://github.com/LIONant-depot/xtextfile/blob/main/documentation/documentation.md)
+- **unit-test**: That servers as examples as well as to test the code
 
 # Example
-
 ```cpp
 struct data
 {
