@@ -1,0 +1,7 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/build/UnitTest.vs2022/.vs/UnitTest.vs2022
+/build/UnitTest.vs2022/UnitTest.vs2022/x64
+/build/UnitTest.vs2022/x64
