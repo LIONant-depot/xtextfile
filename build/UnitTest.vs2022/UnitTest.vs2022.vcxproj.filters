@@ -9,4 +9,8 @@
     <ClInclude Include="..\..\source\xtextfile_inline.h" />
     <ClInclude Include="..\..\source\Unitest\xtextfile_unit_test.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" />
+    <None Include="..\..\documentation\documentation.md" />
+  </ItemGroup>
 </Project>
