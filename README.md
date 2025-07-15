@@ -26,7 +26,7 @@ for whether you're reading or writing (e.g., via `isReading()` or a passed boole
 - **documentation**: You can find the [documentation here](https://github.com/LIONant-depot/xtextfile/blob/main/documentation/documentation.md)
 - **unit-test**: That servers as examples as well as to test the code
 
-# Example
+## Example
 ```cpp
 struct data
 {
