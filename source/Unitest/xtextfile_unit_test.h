@@ -3,6 +3,7 @@
 namespace xtextfile::unit_test
 {
     constexpr static std::array StringBack      = { "String Test",              "Another test",         "Yet another"           };
+    constexpr static std::array WStringBack     = { L"\u4f60\u597d\uff0c(Better)\u4e16\u754c\uff01",    L"\u5b66\u4e60\u5feb\u4e50",  L"\u548c\u5e73\u4e07\u5c81" };
 
     constexpr static std::array Floats32Back    = { -50.0f,                     2.1233f,                1.312323123f            };
     constexpr static std::array Floats64Back    = { -32.323212312312323,        2.2312323233,           1.312323123             };
@@ -44,7 +45,8 @@ namespace xtextfile::unit_test
     inline
     xtextfile::err AllTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
-        std::array<std::string, 3>  String      = { StringBack[0], StringBack[1], StringBack[2] };
+        std::array<std::string, 3>  String      = {  StringBack[0],  StringBack[1],  StringBack[2] };
+        std::array<std::wstring, 3> WString     = { WStringBack[0], WStringBack[1], WStringBack[2] };
 
         auto                        Floats32    = Floats32Back;
         auto                        Floats64    = Floats64Back;
@@ -82,6 +84,7 @@ namespace xtextfile::unit_test
                 const auto i = c % StringBack.size();
                 0
                     || TextFile.Field("String", String[i]).isError(Error)
+                    || TextFile.Field("WString", WString[i]).isError(Error)
                     || TextFile.Field("Floats", Floats64[i]
                                               , Floats32[i]).isError(Error)
                     || TextFile.Field("Ints", Int64[i]
@@ -100,7 +103,8 @@ namespace xtextfile::unit_test
                 //
                 if (isRead)
                 {
-                    assert(StringBack[i] == String[i]);
+                    assert(StringBack[i]  == String[i]);
+                    assert(WStringBack[i] == WString[i]);
 
                     //
                     // If we tell the file system to write floats as floats then we will leak precision
@@ -139,7 +143,8 @@ namespace xtextfile::unit_test
     inline
         xtextfile::err SimpleVariableTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
-        std::array<std::string, 3>      String      = { StringBack[0], StringBack[1], StringBack[2] };
+        std::array<std::string, 3>      String      = {  StringBack[0],  StringBack[1],  StringBack[2] };
+        std::array<std::wstring, 3>     WString     = { WStringBack[0], WStringBack[1], WStringBack[2] };
 
         auto                            Floats32    = Floats32Back;
         auto                            Floats64    = Floats64Back;
@@ -185,9 +190,10 @@ namespace xtextfile::unit_test
                 switch (i)
                 {
                 case 0: if (TextFile.Field("value:?", String[0]).isError(Error)) return; break;
-                case 1: if (TextFile.Field("value:?", Floats64[0],  Floats32[0]).isError(Error)) return; break;
-                case 2: if (TextFile.Field("value:?", Int64[0],     Int32[0],   Int16[0],   Int8[0]).isError(Error)) return; break;
-                case 3: if (TextFile.Field("value:?", UInt64[0],    UInt32[0],  UInt16[0],  UInt8[0]).isError(Error)) return; break;
+                case 1: if (TextFile.Field("value:?", WString[0]).isError(Error)) return; break;
+                case 2: if (TextFile.Field("value:?", Floats64[0],  Floats32[0]).isError(Error)) return; break;
+                case 3: if (TextFile.Field("value:?", Int64[0],     Int32[0],   Int16[0],   Int8[0]).isError(Error)) return; break;
+                case 4: if (TextFile.Field("value:?", UInt64[0],    UInt32[0],  UInt16[0],  UInt8[0]).isError(Error)) return; break;
                 }
             }
         )) return Error;
@@ -234,13 +240,16 @@ namespace xtextfile::unit_test
     {
         xtextfile::err                          Error;
         std::array<std::string, 3>              String{ StringBack[0], StringBack[1], StringBack[2] };
+        std::array<std::wstring, 3>             WString{ WStringBack[0], WStringBack[1], WStringBack[2] };
         std::string                             Name{ "Hello" };
+        std::wstring                            WName{ L"Wide Hello" };
         bool                                    isValid{ true };
         std::array<float, 3>                    Position{ 0.1f, 0.5f, 0.6f };
         constexpr static std::array             Types
         { xtextfile::user_defined_types{     "V3", "fff"  }
         , xtextfile::user_defined_types{   "BOOL",   "c"  }
         , xtextfile::user_defined_types{ "STRING",   "s"  }
+        , xtextfile::user_defined_types{ "WSTRING",  "S"  }
         };
 
         //
@@ -271,9 +280,10 @@ namespace xtextfile::unit_test
 
                 switch (Type.m_Value)
                 {
-                case xtextfile::crc32::computeFromString("V3").m_Value:     if (TextFile.Field(Type, "Value:?", Position[0], Position[1], Position[2]).isError(Error)) return; break;
-                case xtextfile::crc32::computeFromString("BOOL").m_Value:   if (TextFile.Field(Type, "Value:?", isValid).isError(Error)) return; break;
-                case xtextfile::crc32::computeFromString("STRING").m_Value: if (TextFile.Field(Type, "Value:?", Name).isError(Error)) return; break;
+                case xtextfile::crc32::computeFromString("V3").m_Value:      if (TextFile.Field(Type, "Value:?", Position[0], Position[1], Position[2]).isError(Error)) return; break;
+                case xtextfile::crc32::computeFromString("BOOL").m_Value:    if (TextFile.Field(Type, "Value:?", isValid).isError(Error)) return; break;
+                case xtextfile::crc32::computeFromString("STRING").m_Value:  if (TextFile.Field(Type, "Value:?", Name).isError(Error)) return; break;
+                case xtextfile::crc32::computeFromString("WSTRING").m_Value: if (TextFile.Field(Type, "Value:?", WName).isError(Error)) return; break;
                 }
             }
         )) return Error;
@@ -288,11 +298,12 @@ namespace xtextfile::unit_test
     xtextfile::err UserTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
         xtextfile::err                    Error;
-        constexpr static std::array Types
-        { xtextfile::user_defined_types{     "V3", "fff"  }
-        , xtextfile::user_defined_types{   "BOOL",   "c"  }
-        , xtextfile::user_defined_types{ "STRING",   "s"  }
-        };
+
+        constexpr xtextfile::user_defined_types v3  { "V3",     "fff" };
+        constexpr xtextfile::user_defined_types bo  { "BOOL",   "c" };
+        constexpr xtextfile::user_defined_types str { "STRING", "s" };
+
+        constexpr static std::array Types{ v3, bo, str };
 
         std::string     Name        = { "Hello" };
         bool            isValid     = true;
@@ -316,9 +327,9 @@ namespace xtextfile::unit_test
             , [&](std::size_t, xtextfile::err& Error)
             {
                 0
-                || TextFile.Field(Types[0].m_CRC, "Position", Position[0], Position[1], Position[2]).isError(Error)
-                || TextFile.Field(Types[1].m_CRC, "IsValid", isValid).isError(Error)
-                || TextFile.Field(Types[2].m_CRC, "Name", Name ).isError(Error)
+                || TextFile.Field(v3.m_CRC, "Position", Position[0], Position[1], Position[2]).isError(Error)
+                || TextFile.Field(bo.m_CRC, "IsValid", isValid).isError(Error)
+                || TextFile.Field(str.m_CRC, "Name", Name ).isError(Error)
                 ;
             }
         )) return Error;
@@ -336,12 +347,12 @@ namespace xtextfile::unit_test
             {
                 switch (i)
                 {
-                case 0: if (TextFile.Field(Types[0].m_CRC, "Value:?", Position[0], Position[1], Position[2]).isError(Error)) return; break;
-                case 1: if (TextFile.Field(Types[1].m_CRC, "Value:?", isValid).isError(Error)) return; break;
-                case 2: if (TextFile.Field(Types[2].m_CRC, "Value:?", Name ).isError(Error)) return; break;
+                case 0: if (TextFile.Field(v3.m_CRC, "Value:?", Position[0], Position[1], Position[2]).isError(Error)) return; break;
+                case 1: if (TextFile.Field(bo.m_CRC, "Value:?", isValid).isError(Error)) return; break;
+                case 2: if (TextFile.Field(str.m_CRC, "Value:?", Name ).isError(Error)) return; break;
                 }
 
-                TextFile.Field(Types[1].m_CRC, "IsValid", isValid).isError(Error);
+                TextFile.Field(bo.m_CRC, "IsValid", isValid).isError(Error);
             }
         )) return Error;
 
@@ -375,7 +386,7 @@ namespace xtextfile::unit_test
         if (SimpleVariableTypes(TextFile, isRead, Flags).isError(Error)) return Error;
 
         if (UserTypes(TextFile, isRead, Flags).isError(Error)) return Error;
-
+      
         if (Properties(TextFile, isRead, Flags).isError(Error)) return Error;
 
         //

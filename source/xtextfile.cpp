@@ -113,76 +113,89 @@ namespace xtextfile
 namespace xtextfile::details
 {
     //-----------------------------------------------------------------------------------------------------
-    // convert wstring to UTF-8 string
-    //-----------------------------------------------------------------------------------------------------
 
-    // Convert std::wstring to UTF-8 std::string
-    inline std::string wstring_to_utf8(const std::wstring_view str)
-{
-        if (str.empty()) {
-            return {};
-        }
-
-#if defined(_WIN32)
-        std::wstring temp{ str };
-        const size_t max_bytes = temp.size() * 4 + 1;
-        std::vector<char> buffer(max_bytes);
-        size_t ret;
-        errno_t err = wcstombs_s(&ret, buffer.data(), max_bytes, temp.c_str(), _TRUNCATE);
-        if (err != 0) {
-            assert(false);
-            return {};
-        }
-        return { buffer.data(), ret - 1 }; // Exclude null terminator
-#else
-        std::wstring temp{ str };
-        const size_t max_bytes = temp.size() * 4 + 1;
-        std::vector<char> buffer(max_bytes);
-        const size_t written = wcstombs(buffer.data(), temp.c_str(), max_bytes);
-        if (written == static_cast<size_t>(-1)) {
-            assert(false);
-            return {};
-        }
-        return { buffer.data(), written };
-#endif
-    }
-
-    //------------------------------------------------------------------------------
-
-    // Convert UTF-8 std::string to std::wstring
-    inline std::wstring utf8_to_wstring(const std::string_view str)
-{
-        if (str.empty()) {
-            return {};
-        }
-
-#if defined(_WIN32)
-        const size_t max_chars = str.size() + 1;
-        std::vector<wchar_t> buffer(max_chars);
-        size_t written;
-        errno_t err = mbstowcs_s(&written, buffer.data(), max_chars, str.data(), str.size());
-        if (err != 0) {
-            assert(false);
-            return {};
-        }
-        return { buffer.data(), written - 1 }; // Exclude null terminator
-#else
-        std::vector<wchar_t> buffer(str.size() + 1);
-        size_t written;
-        errno_t err = mbstowcs_s(&written, buffer.data(), buffer.size(), str.data(), str.size());
-        if (err != 0) {
-            assert(false);
-            return {};
-        }
-        return { buffer.data(), written - 1 }; // Exclude null terminator
-#endif
-    }
-
-    //------------------------------------------------------------------------------
-
-    inline std::string wstring_to_string(const std::wstring_view str)
+    inline std::string wstring_to_ascii_escape(std::wstring_view str)
     {
-        return wstring_to_utf8(str);
+        if (str.empty())
+            return {};
+
+        static_assert(sizeof(wchar_t) >= 2, "wchar_t must be at least 16 bits");
+
+        // Worst case: all characters are non-ASCII to \uXXXX = 6 bytes
+        std::string result;
+        result.reserve(str.size() * 6);
+
+        for (wchar_t ch : str)
+        {
+            if (ch >= 0x20 && ch <= 0x7E && ch != '\\') // printable ASCII, skip encoding
+            {
+                result.push_back(static_cast<char>(ch));
+            }
+            else if (ch == '\\') // escape backslash
+            {
+                result += "\\\\";
+            }
+            else
+            {
+                result += "\\u";
+                for (int shift = 12; shift >= 0; shift -= 4)
+                {
+                    unsigned digit = (ch >> shift) & 0xF;
+                    result.push_back(digit < 10 ? ('0' + digit) : ('A' + (digit - 10)));
+                }
+            }
+        }
+
+        // Safety assertions
+        assert(!result.empty());
+
+        return result;
+    }
+
+    //------------------------------------------------------------------------------
+
+    inline std::wstring ascii_escape_to_wstring(const std::string_view input)
+{
+        if (input.empty())
+        {
+            return {};
+        }
+
+        std::wstring result;
+        // Rough estimate: 6 chars per \uXXXX
+        result.reserve(input.size() / 6); 
+
+        size_t i = 0;
+        while (i + 5 < input.size()) 
+        {
+            if (input[i] == '\\' && input[i + 1] == 'u') 
+            {
+                unsigned int code = 0;
+
+                // Parse 4 hex digits directly
+                for (int j = 0; j < 4; ++j) 
+                {
+                    char c = input[i + 2 + j];
+                    code <<= 4;
+                         if (c >= '0' && c <= '9') code |= c - '0';
+                    else if (c >= 'A' && c <= 'F') code |= c - 'A' + 10;
+                    else if (c >= 'a' && c <= 'f') code |= c - 'a' + 10;
+                    else goto FALLBACK_ASCII; // Invalid hex, fallback
+                }
+
+                result.push_back(static_cast<wchar_t>(code));
+                i += 6;
+            }
+            else 
+            {
+                FALLBACK_ASCII:
+                result.push_back(static_cast<unsigned char>(input[i]));
+
+                // next
+                ++i; 
+            }
+        }
+        return result;
     }
 
     //------------------------------------------------------------------------------
@@ -208,10 +221,16 @@ namespace xtextfile::details
     {
         assert(m_pFP == nullptr);
     #if defined(_MSC_VER)
-        auto Err = fopen_s( &m_pFP, wstring_to_string(FilePath).c_str(), isBinary ? "rb" : "rt" );
-        if( Err )
+        auto Err = _wfopen_s( &m_pFP, std::wstring(FilePath).c_str(), isBinary ? L"rb" : L"rt");
+        if (Err != 0)
         {
-            return { err::state::FAILURE, std::format( L"#Fail to open {} for reading", FilePath ) };
+            switch (Err)
+            {
+            case ENOENT: return { err::state::FILE_NOT_FOUND, std::format(L"#Error: File not found: {} for reading", FilePath) };
+            case EACCES: return { err::state::FAILURE, std::format(L"#Error: Permission denied: {} for reading", FilePath) };
+            case EINVAL: return { err::state::FAILURE, std::format(L"#Error: Invalid parameter passed to _wfopen_s. {} for reading", FilePath) };
+            default:     return { err::state::FAILURE, std::format(L"#Error: Failed to open file {} for reading with error code {}", FilePath, Err) };
+            }
         }
     #else
         m_pFile->m_pFP = fopen( wstring_to_utf8(FilePath).c_str(), pAttr );
@@ -233,12 +252,18 @@ namespace xtextfile::details
     {
         assert(m_pFP == nullptr);
     #if defined(_MSC_VER)
-        auto Err = fopen_s( &m_pFP, wstring_to_string(FilePath).c_str(), isBinary ? "wb" : "wt" );
-        if( Err )
+        auto Err = _wfopen_s(&m_pFP, std::wstring(FilePath).c_str(), isBinary ? L"wb" : L"wt" );
+        if (Err != 0)
         {
-            return { err::state::FAILURE, std::format(L"#Fail to open {} for writing", FilePath) };
+            switch (Err)
+            {
+            case ENOENT: return { err::state::FILE_NOT_FOUND, std::format(L"#Error: File not found: {} for writing", FilePath) };
+            case EACCES: return { err::state::FAILURE, std::format(L"#Error: Permission denied: {} for writing", FilePath) };
+            case EINVAL: return { err::state::FAILURE, std::format(L"#Error: Invalid parameter passed to _wfopen_s. {} for writing", FilePath) };
+            default:     return { err::state::FAILURE, std::format(L"#Error: Failed to open file {} for writing with error code {}", FilePath, Err) };
+            }
         }
-    #else
+#else
         m_pFile->m_pFP = fopen( wstring_to_utf8(FilePath).c_str(), pAttr );
         if( m_pFP )
         {
@@ -543,21 +568,7 @@ namespace xtextfile
 
         // Open the file in binary or in text mode... if we don't know we will open in binary
         if( auto Err = m_File.openForReading(FilePath, isTextFile < 2 ); Err )
-        {
-            std::error_code ec;
-            if (std::filesystem::exists(FilePath, ec) == false)
-            {
-                return { err::state::FILE_NOT_FOUND, std::format(L"#Fail to find the file in the specify directory", FilePath) };
-            }
-
-            if (ec)
-            {
-                return { err::state::FILE_NOT_FOUND, std::format(L"#Fail to detect if the file {} is in the correct directory", FilePath) };
-            }
-
             return Err;
-        }
-            
 
         //
         // Okay make sure that we say that we are not reading the file
@@ -1063,15 +1074,26 @@ namespace xtextfile
                     }
                     else if constexpr (std::is_same_v<T, std::wstring*>)
                     {
-                        FieldInfo.m_iData = m_iMemOffet;
+                        FieldInfo.m_iData = align_to(m_iMemOffet, 2);
+                        m_iMemOffet = FieldInfo.m_iData;
 
-                        std::string FinalString = details::wstring_to_utf8( *p );
-
-                        for (auto E : FinalString) 
+                        if ( p->empty() == false )
                         {
-                            m_Memory[m_iMemOffet++] = E;
+                            auto length = static_cast<int>(p->length() * sizeof(wchar_t));
+                            memcpy( &m_Memory[m_iMemOffet], p->data(), length );
+                            if (m_File.m_States.m_isEndianSwap)
+                            {
+                                for (int i=0; i< length; i += 2 )
+                                {
+                                    auto& X = reinterpret_cast<std::uint16_t&>(m_Memory[m_iMemOffet + i]);
+                                    X = endian::Convert(X);
+                                }
+                            }
+                            m_iMemOffet += length;
                         }
 
+                        // make sure it is properly terminated
+                        m_Memory[m_iMemOffet++] = 0;
                         m_Memory[m_iMemOffet++] = 0;
 
                         FieldInfo.m_Width = m_iMemOffet - FieldInfo.m_iData;
@@ -1080,7 +1102,8 @@ namespace xtextfile
                     {
                         if constexpr ( std::is_pointer_v<T> == false 
                             || std::is_same_v<T,void*> 
-                            || std::is_same_v<T,const char*> ) 
+                            || std::is_same_v<T,const char*>
+                            || std::is_same_v<T, const wchar_t*> )
                         {
                             assert(false);
                         }
@@ -1115,7 +1138,7 @@ namespace xtextfile
                                 {
                                     auto& x = reinterpret_cast<std::uint16_t& >(m_Memory[FieldInfo.m_iData]);
                                     x = reinterpret_cast<std::uint16_t&>(*p);
-                                    if( m_File.m_States.m_isEndianSwap ) x = endian::Convert(x);
+                                    if (m_File.m_States.m_isEndianSwap) x = endian::Convert(x);
                                 }
                                 else    if constexpr ( size == 4 ) 
                                 {
@@ -1127,9 +1150,11 @@ namespace xtextfile
                                 {
                                     auto& x = reinterpret_cast<std::uint64_t& >(m_Memory[FieldInfo.m_iData]);
                                     x = reinterpret_cast<std::uint64_t&>(*p);
-
-                                    if( m_File.m_States.m_isEndianSwap ) 
-                                        x = endian::Convert(x);
+                                    if( m_File.m_States.m_isEndianSwap )  x = endian::Convert(x);
+                                }
+                                else
+                                {
+                                    assert(false);
                                 }
                             }
                         }
@@ -1200,7 +1225,7 @@ namespace xtextfile
                     else    if constexpr (std::is_same_v<t, std::wstring*>)
                             {
                                 Field.m_iData = m_iMemOffet;
-                                std::string temp = details::wstring_to_utf8( {reinterpret_cast<wchar_t*>(m_Memory.data() + Field.m_iData), reinterpret_cast<wchar_t*>(m_Memory.data() + m_Memory.size())});
+                                std::string temp = details::wstring_to_ascii_escape( *p );
 
                                 m_Memory[m_iMemOffet++] = '"';
                                 for (auto E : temp) m_Memory[m_iMemOffet++] = E;
@@ -1352,7 +1377,7 @@ namespace xtextfile
                         if( DynamicFields.m_UserType.m_Value ) 
                         {
                             auto            p     = getUserType( DynamicFields.m_UserType );
-                            std::uint8_t    Index = static_cast<std::uint8_t>(p - m_UserTypes.data()); //m_UserTypes.getIndexByEntry<std::uint8_t>( *p );
+                            std::uint8_t    Index = static_cast<std::uint8_t>(p - m_UserTypes.data());
 
                             if( m_File.WriteChar( ';' ).isError(Error) )
                                 return Error;
@@ -1750,7 +1775,7 @@ namespace xtextfile
                                 int nSpaces = SubColumn.m_FormatWidth - ( SubColumn.m_FormatIntWidth + FieldInfo.m_Width - FieldInfo.m_IntWidth );
                                 if( m_File.WriteChar( ' ', nSpaces ).isError(Error) ) return Error;
                             }
-                            else if( Column.m_SystemTypes[n] == 's' )
+                            else if( Column.m_SystemTypes[n] == 's' || Column.m_SystemTypes[n] == 'S')
                             {
                                 // Left align
                                 if( m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
@@ -2109,8 +2134,14 @@ namespace xtextfile
                 {
                     *p = &m_Memory[iData];
                 }
+                else if constexpr (std::is_same_v<t, std::wstring*>)
+                {
+                    if (m_File.m_States.m_isBinary) *p = reinterpret_cast<wchar_t*>(&m_Memory[iData]);
+                    else                            *p = details::ascii_escape_to_wstring( &m_Memory[iData] );
+                }
                 else
                 {
+                    // We can not handle whatever type you are trying to use...
                     assert( false );
                 }
             }, E );
@@ -2310,6 +2341,22 @@ namespace xtextfile
                             if( m_File.getC(c).isError(Error) ) return Error;
                             m_Memory[m_iMemOffet++] = c;
                         } while(c); 
+                        Info.m_Width = m_iMemOffet - Info.m_iData;
+                        break;
+                    }
+                    case 'S':
+                    {
+                        short c;
+                        Info.m_iData = align_to(m_iMemOffet, 2);
+                        m_iMemOffet = Info.m_iData;
+                        do
+                        {
+                            if (m_File.Read( c, 2, 1).isError(Error)) return Error;
+
+                            m_Memory[m_iMemOffet++] = (c >> 0) & 0xff;
+                            m_Memory[m_iMemOffet++] = (c >> 8) & 0xff;
+
+                        } while (c);
                         Info.m_Width = m_iMemOffet - Info.m_iData;
                         break;
                     }

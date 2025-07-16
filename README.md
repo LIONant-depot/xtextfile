@@ -1,38 +1,34 @@
 # xtextfile
 
-The simplest most compact and redable file format with version sensitive serialization which supports both text and binary
+The simplest most compact and redable file format with version sensitive serialization which supports both text and binary with minimal code duplication.
 
-The `xtextfile::stream` class provides a streamlined way to read and write structured data to text or binary files. 
-It emphasizes minimal code duplication, especially between reading and writing operations. The API is designed such 
-that the same callback functions can often handle both modes with little to no modification—typically just a check 
-for whether you're reading or writing (e.g., via `isReading()` or a passed boolean flag).
+The `xtextfile::stream` class makes it easy to read and write structured data using a single code path. 
+You can use the same callbacks for both reading and writing by checking `isReading()` or using a simple flag. 
+This reduces maintenance and keeps your code clean.
 
 ## Key Features
-- **Symmetry Between Read and Write**: Unlike many serialization libraries that require separate functions for 
-     serialization and deserialization, `xtextfile::stream` uses unified methods like `Record` and `Field`. 
-     This minimizes code: you define data layout once in a callback, and it works for both modes. For example,
-- in writing mode, you pass values; in reading mode, you pass references/pointers to populate them.
-- **Human-Readable Text Format**: Text files are formatted for easy inspection/debugging, with headers,           
-     types, and aligned columns. Binary is compact and precise.
-- **NonLossy Floats in Text**: As noted, text mode may lose floating-point precision unless using hex representation    
-     (default when `flags.m_isWriteFloats` is false).
-- **Error Handling**: Operations return `err` objects; check with `isError()` or implicit bool conversion.
-- **User-Defined Types**: Compose custom structures from primitives to avoid repeating field definitions.
-- **Flexibility**: Supports fixed columns, variable types per line, and dynamic counts in records.
-- **Always well typed**: All the data is well typed no guessing not miss interpretation which leads to correct versions
-- **Binary serialization** With no code changes
-- **No dependencies** Zero dependencies to make it easy to include in your projects
-- **MIT License**: As free as it gets
-- **documentation**: You can find the [documentation here](https://github.com/LIONant-depot/xtextfile/blob/main/documentation/documentation.md)
-- **unit-test**: That servers as examples as well as to test the code
 
-## Example
+* **Unified Read and Write** - The same code handles both reading and writing, reducing duplication.
+* **Very Readable Text Format** - Also supports Binary
+* **Accurate Floating-Point Handling** - Hexadecimal float encoding to avoid any precision loss.
+* **Simple Error Handling** - Light weight string and error code in one
+* **Supports Custom Types** - User-defined structures by composing from fields — no repetitive code.
+* **Flexible Structure** - Supports fixed columns, dynamic counts, and per-line type flexibility.
+* **Strict Typing** - Data is always well-typed, so no ambiguity
+* **Binary Serialization with No Code Changes** - Easily switch between text and binary modes.
+* **Easy Integration** - Just include the .cpp and .h in your project and you are done.
+* **No Dependencies** - Zero external dependencies. Easy to integrate into any project.
+* **MIT License** - Open-source, simple, and permissive license.
+* **Documentation and Tests Included** - Full [documentation](https://github.com/LIONant-depot/xtextfile/blob/main/documentation/documentation.md) and unit tests that double as examples.
+
+## Code Example
+
 ```cpp
 struct data
 {
-    std::string     str;
-    double          d; 
-    float           f;
+    std::string str;
+    double      d; 
+    float       f;
 };
 
 std::vector<data> list;
@@ -40,18 +36,36 @@ xtextfile::stream file;
 
 file.Open(false, L"data.bin", xtextfile::file_type::BINARY);
 
-// This code will read and write to/from the file...
-file.Record(err, "MyList"
-    , [&](std::size_t& count, xtextfile::err&) 
-    {
+file.Record(err, "MyList",
+    [&](std::size_t& count, xtextfile::err&) {
         if (s.isReading()) list.resize(count);
         else               count = list.size();
-    }
-    , [&](std::size_t index, xtextfile::err& e) 
-    {
+    },
+    [&](std::size_t index, xtextfile::err& e) {
         s.Field("String", list[index].str);
         s.Field("Floats", list[index].d, list[index].f);
     });
+```
+
+## Format Example
+
+```
+[ SomeTypes : 4 ]
+{ String:s        Floats:Ff                          Ints:DdCc              UInts:GgHh                    }
+//--------------  ---------------------------------  ---------------------  -----------------------------
+  "String Test"   -32.323212312312322  -50           13452     0 -2312  16  #321D2298C #1FC52AC #7A78 #21
+  "Another test"    2.2312323233         2.12330008   -321 21231   211  21        #141   #36471  #8AD #16
+  "Yet another"     1.3123231230000001   1.31232309   1434  4344   344 -44        #59A   #1B34A #2CAA #2C
+                  
+// New Types
+< V3:fff BOOL:c STRING:s >
+
+[ Properties : 3 ]
+{ Name:s          Value:?                               }
+//--------------  -------------------------------------
+  "String Test"   ;V3     #3DCCCCCD #3F000000 #3F19999A
+  "Another test"  ;BOOL   1                            
+  "Yet another"   ;STRING "Hello"                      
 ```
 
 ---

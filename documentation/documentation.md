@@ -99,7 +99,7 @@ The fileds can be one of these supported data types
 | C    | 16-bit signed integer        |
 | H    | 16-bit unsigned integer      |
 | s    | String (assumed `std::string`) |
-| S    | wide string (assumed `std::wstring`) (WIP) |
+| S    | wide string (assumed `std::wstring`) |
 
 ## Comments
 - `WriteComment(std::string_view comment)`: Adds comments in text mode (ignored on read).
@@ -195,30 +195,29 @@ The text format is human-readable, with sections for records, user types, and da
 
 #### Example:
 ```
+
 //----------------------------------------------------
 // Example that shows how to use all system types
 //----------------------------------------------------
 
-[ TestTypes : 5 ]
-{ String:s        Floats:Ff                          Ints:DdCc              UInts:GgHh                    }
-//--------------  ---------------------------------  ---------------------  -----------------------------
-  "String Test"   -32.323212312312322  -50           13452     0 -2312  16  #321D2298C #1FC52AC #7A78 #21
-  "Another test"    2.2312323233         2.12330008   -321 21231   211  21        #141   #36471  #8AD #16
-  "Yet another"     1.3123231230000001   1.31232309   1434  4344   344 -44        #59A   #1B34A #2CAA #2C
-  "String Test"   -32.323212312312322  -50           13452     0 -2312  16  #321D2298C #1FC52AC #7A78 #21
+[ TestTypes : 4 ]
+{ String:s        WString:S                                       Floats:Ff                    Ints:DdCc              UInts:GgHh                    }
+//--------------  ----------------------------------------------  ---------------------------  ---------------------  -----------------------------
+  "String Test"   "\u4F60\u597D\uFF0C(Better)\u4E16\u754C\uFF01"  #C040295F056385E2 #C2480000  13452     0 -2312  16  #321D2298C #1FC52AC #7A78 #21
+  "Another test"  "\u5B66\u4E60\u5FEB\u4E50"                      #4001D9905512D013 #4007E426   -321 21231   211  21        #141   #36471  #8AD #16
+  "Yet another"   "\u548C\u5E73\u4E07\u5C81"                      #3FF4FF4687F11D06 #3FA7FA34   1434  4344   344 -44        #59A   #1B34A #2CAA #2C
+  "String Test"   "\u4F60\u597D\uFF0C(Better)\u4E16\u754C\uFF01"  #C040295F056385E2 #C2480000  13452     0 -2312  16  #321D2298C #1FC52AC #7A78 #21
 
 //----------------------------------------------------
 // Example that shows how to use per line (rather than per column) types
 //----------------------------------------------------
 
-[ VariableTypes : 5 ]
-{ Ints:d  value:?                       }
-//------  -----------------------------
-      0   :s    "String Test"          
-  21231   :Ff   -32.323212312312322 -50
-   4344   :DdCc 13452 0 -2312 16       
-      0   :s    "String Test"          
-  21231   :Ff   -32.323212312312322 -50
+[ VariableTypes : 3 ]
+{ Ints:d  value:?                                            }
+//------  --------------------------------------------------
+      0   :s  "String Test"                                 
+  21231   :S  "\u4F60\u597D\uFF0C(Better)\u4E16\u754C\uFF01"
+   4344   :Ff #C040295F056385E2 #C2480000                   
 
 //----------------------------------------------------
 // Example that shows how to use user types
@@ -228,23 +227,23 @@ The text format is human-readable, with sections for records, user types, and da
 < V3:fff BOOL:c STRING:s >
 
 [ TestUserTypes ]
-{ Position;V3                  IsValid;BOOL  Name;STRING }
-//---------------------------  ------------  -----------
-  0.100000001 0.5 0.600000024       1          "Hello"  
+{ Position;V3                    IsValid;BOOL  Name;STRING }
+//-----------------------------  ------------  -----------
+  #3DCCCCCD #3F000000 #3F19999A       1          "Hello"  
 
 [ VariableUserTypes : 3 ]
-{ Value:?                              IsValid;BOOL }
-//-----------------------------------  ------------
-  ;V3     0.100000001 0.5 0.600000024       1      
-  ;BOOL   1                                 1      
-  ;STRING "Hello"                           1      
+{ Value:?                                IsValid;BOOL }
+//-------------------------------------  ------------
+  ;V3     #3DCCCCCD #3F000000 #3F19999A       1      
+  ;BOOL   1                                   1      
+  ;STRING "Hello"                             1      
 
 [ Properties : 3 ]
-{ Name:s          Value:?                             }
-//--------------  -----------------------------------
-  "String Test"   ;V3     0.100000001 0.5 0.600000024
-  "Another test"  ;BOOL   1                          
-  "Yet another"   ;STRING "Hello"                    
+{ Name:s          Value:?                               }
+//--------------  -------------------------------------
+  "String Test"   ;V3     #3DCCCCCD #3F000000 #3F19999A
+  "Another test"  ;BOOL   1                            
+  "Yet another"   ;STRING "Hello"                      
 
 ```
 
