@@ -12,7 +12,7 @@ This reduces maintenance and keeps your code clean.
 * **Very Readable Text Format** - Also supports Binary
 * **Accurate Floating-Point Handling** - Hexadecimal float encoding to avoid any precision loss.
 * **Simple Error Handling** - Light weight string and error code in one
-* **Supports Custom Types** - User-defined structures by composing from fields — no repetitive code.
+* **Supports Custom Types** - User-defined structures by composing from fields â€” no repetitive code.
 * **Flexible Structure** - Supports fixed columns, dynamic counts, and per-line type flexibility.
 * **Strict Typing** - Data is always well-typed, so no ambiguity
 * **Binary Serialization with No Code Changes** - Easily switch between text and binary modes.
@@ -20,7 +20,7 @@ This reduces maintenance and keeps your code clean.
 * **No Dependencies** - Zero external dependencies. Easy to integrate into any project.
 * **MIT License** - Open-source, simple, and permissive license.
 * **Documentation and Tests Included** - Full [documentation](https://github.com/LIONant-depot/xtextfile/blob/main/documentation/documentation.md) and unit tests that double as examples.
-
+* **Unicode strings** - Use regular ascii files while still using unicode, great for performance and memory savings.
 ## Code Example
 
 ```cpp
