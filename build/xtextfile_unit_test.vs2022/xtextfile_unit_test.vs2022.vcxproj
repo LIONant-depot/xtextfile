@@ -131,9 +131,9 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\source\implementation\xtextfile_inline.h" />
     <ClInclude Include="..\..\source\Unitest\xtextfile_unit_test.h" />
     <ClInclude Include="..\..\source\xtextfile.h" />
-    <ClInclude Include="..\..\source\xtextfile_inline.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\documentation\documentation.md" />

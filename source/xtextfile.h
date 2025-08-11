@@ -368,6 +368,6 @@ namespace xtextfile
     };
 }
 
-#include "xtextfile_inline.h"
+#include "implementation/xtextfile_inline.h"
 
 #endif
