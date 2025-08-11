@@ -84,7 +84,7 @@ namespace xtextfile
     //------------------------------------------------------------------------------------------------
 
     template< std::size_t N, typename... T_ARGS > inline
-    err stream::Field( crc32 UserType, const char(&pFieldName)[N], T_ARGS&... Args) noexcept
+    xerr stream::Field( crc32 UserType, const char(&pFieldName)[N], T_ARGS&... Args) noexcept
     {
         static_assert((details::is_valid_type_v<T_ARGS> || ...));
         details::arglist::out Out{ &Args... };
@@ -96,7 +96,7 @@ namespace xtextfile
     //------------------------------------------------------------------------------------------------
 
     template< std::size_t N, typename... T_ARGS > inline
-    err stream::Field(const char(&pFieldName)[N], T_ARGS&... Args) noexcept
+    xerr stream::Field(const char(&pFieldName)[N], T_ARGS&... Args) noexcept
     {
         crc32 UserType = crc32{ 0 };
         return Field(UserType, pFieldName, Args...);
@@ -105,20 +105,22 @@ namespace xtextfile
     //------------------------------------------------------------------------------------------------
 
     template< std::size_t N, typename TT, typename T > inline
-    bool stream::Record( err& Error, const char(&Str)[N], TT&& RecordStar, T&& Callback) noexcept
+    xerr stream::Record( const char(&Str)[N], TT&& RecordStar, T&& Callback) noexcept
     {
+        xerr Error;
         if (m_File.m_States.m_isReading)
         {
             if (std::strcmp(getRecordName().data(), Str) != 0)
             {
-                Error = err::create< err::state::UNEXPECTED_RECORD, "Unexpected record" >();
-                return true;
+                return xerr::create< xtextfile::state::UNEXPECTED_RECORD, "Unexpected record" >();
             }
             std::size_t Count = getRecordCount();
             RecordStar(Count, Error);
+            if (Error) return Error;
+
             for (std::remove_const_t<decltype(Count)> i = 0; i < Count; i++)
             {
-                if (ReadLine().isError(Error)) return true;
+                if (Error = ReadLine(); Error) return Error;
                 if constexpr (details::arg_count_v<T> == 2) 
                 {
                     Callback(i, Error);
@@ -128,18 +130,19 @@ namespace xtextfile
                     static_assert(details::arg_count_v<T> == 1);
                     Callback(Error);
                 }
-                if (Error) return true;
+                if (Error) return Error;
             }
+
             // Read the next record
-            if (ReadRecord().isError(Error))
+            if (Error = ReadRecord(); Error )
             {
-                if (Error.getState() == err::state::UNEXPECTED_EOF) 
+                if (Error.getState<state>() == state::UNEXPECTED_EOF) 
                 {
                     Error.clear();
                 }
                 else
                 {
-                    return true;
+                    return Error;
                 }
             }
         }
@@ -147,7 +150,11 @@ namespace xtextfile
         {
             std::size_t Count;
             RecordStar(Count, Error);
-            if (WriteRecord(Str, Count).isError(Error)) return true;
+
+            if (Error) return Error;
+
+            if (Error = WriteRecord(Str, Count); Error) 
+                return Error;
 
             if (Count == ~0) Count = 1;
             for (std::remove_const_t<decltype(Count)> i = 0; i < Count; i++)
@@ -161,43 +168,25 @@ namespace xtextfile
                     static_assert(details::arg_count_v<T> == 1);
                     Callback(Error);
                 }
-                if (Error) return true;
-                if (WriteLine().isError(Error)) return true;
-            }
-        }
-        return false;
-    }
 
-    //------------------------------------------------------------------------------------------------
+                if (Error) return Error;
 
-    template< std::size_t N, typename TT, typename T > inline
-    err stream::Record(const char(&Str)[N], TT&& RecordStar, T&& Callback) noexcept
-    {
-        err Error;
-        if (Record(Error, Str, std::forward<TT&&>(RecordStar), std::forward<T&&>(Callback)))
-        {
-            if (Error == false)
-            {
-
-            }
-            else
-            {
-
+                if (Error = WriteLine(); Error ) 
+                    return Error;
             }
         }
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------------------------
 
     template< std::size_t N, typename T > inline
-    bool stream::Record( err& Error, const char(&Str)[N], T&& Callback) noexcept
+    xerr stream::Record( const char(&Str)[N], T&& Callback) noexcept
     {
         return Record
-        ( Error
-        , Str,
-        [&](std::size_t& C, err& Error) noexcept
+        ( Str,
+        [&](std::size_t& C, xerr& Error) noexcept
         {
             if (m_File.m_States.m_isReading)
             {
@@ -208,7 +197,7 @@ namespace xtextfile
                 C = ~0;
             }
         }
-        , [&](std::size_t, err& Error) constexpr noexcept
+        , [&](std::size_t, xerr& Error) constexpr noexcept
         {
             if constexpr (details::arg_count_v<T> == 1)
             {
@@ -226,12 +215,12 @@ namespace xtextfile
     //------------------------------------------------------------------------------------------------
 
     template< std::size_t N > inline
-    err stream::RecordLabel(const char(&Str)[N]) noexcept
+    xerr stream::RecordLabel(const char(&Str)[N]) noexcept
     {
         if (m_File.m_States.m_isReading)
         {
             if (getRecordName() != Str)
-                return { err::state::UNEXPECTED_RECORD, "Unexpected record" };
+                return { state::UNEXPECTED_RECORD, "Unexpected record" };
 
             return ReadRecord();
         }

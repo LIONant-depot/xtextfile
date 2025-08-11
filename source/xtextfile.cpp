@@ -11,17 +11,6 @@
 //-----------------------------------------------------------------------------------------------------
 namespace xtextfile
 {
-    template< typename T_B >
-    struct scope_end_callback
-    {
-        ~scope_end_callback()
-        {
-            m_Callback();
-        }
-
-        T_B     m_Callback;
-    };
-
     //-----------------------------------------------------------------------------------------------------
     template<typename T>
     static constexpr T align_to(T X, std::size_t alignment) noexcept
@@ -112,6 +101,25 @@ namespace xtextfile
 //-----------------------------------------------------------------------------------------------------
 namespace xtextfile::details
 {
+    //-----------------------------------------------------------------------------------------------------
+
+    std::string strXstr(std::wstring&& Message) noexcept
+    {
+        // Ensure locale is set for UTF-8 conversion
+        std::setlocale(LC_ALL, "en_US.UTF-8");
+
+        const size_t max_bytes = Message.size() * 4 + 1;
+        std::vector<char> buffer(max_bytes);
+        size_t ret;
+        errno_t err = wcstombs_s(&ret, buffer.data(), max_bytes, Message.c_str(), _TRUNCATE);
+        if (err != 0)
+        {
+            assert(false);
+        }
+
+        return std::string{ buffer.data(), ret };
+    }
+
     //-----------------------------------------------------------------------------------------------------
 
     inline std::string wstring_to_ascii_escape(std::wstring_view str)
@@ -217,19 +225,21 @@ namespace xtextfile::details
 
     //------------------------------------------------------------------------------
 
-    err2 file::openForReading( const std::wstring_view FilePath, bool isBinary ) noexcept
+    xerr file::openForReading( const std::wstring_view FilePath, bool isBinary ) noexcept
     {
         assert(m_pFP == nullptr);
     #if defined(_MSC_VER)
         auto Err = _wfopen_s( &m_pFP, std::wstring(FilePath).c_str(), isBinary ? L"rb" : L"rt");
         if (Err != 0)
         {
+            xerr::LogMessage<state::FAILURE>(strXstr(std::format(L"Error while using _wfopen_s with {} Gave, Error code reported: {}", FilePath, Err)));
+
             switch (Err)
             {
-            case ENOENT: return { err::state::FILE_NOT_FOUND, std::format(L"#Error: File not found: {} for reading", FilePath) };
-            case EACCES: return { err::state::FAILURE, std::format(L"#Error: Permission denied: {} for reading", FilePath) };
-            case EINVAL: return { err::state::FAILURE, std::format(L"#Error: Invalid parameter passed to _wfopen_s. {} for reading", FilePath) };
-            default:     return { err::state::FAILURE, std::format(L"#Error: Failed to open file {} for reading with error code {}", FilePath, Err) };
+            case ENOENT: return xerr::create  < state::FILE_NOT_FOUND, "Error: File not found for reading">();
+            case EACCES: return xerr::create_f< state, "Error: Permission denied: for reading">();
+            case EINVAL: return xerr::create_f< state, "Error: Invalid parameter passed to _wfopen_s. for reading">();
+            default:     return xerr::create_f< state, "Error: Failed to open file for reading with error code">();
             }
         }
     #else
@@ -248,22 +258,24 @@ namespace xtextfile::details
 
     //------------------------------------------------------------------------------
 
-    err2 file::openForWriting( const std::wstring_view FilePath, bool isBinary  ) noexcept
+    xerr file::openForWriting( const std::wstring_view FilePath, bool isBinary  ) noexcept
     {
         assert(m_pFP == nullptr);
     #if defined(_MSC_VER)
         auto Err = _wfopen_s(&m_pFP, std::wstring(FilePath).c_str(), isBinary ? L"wb" : L"wt" );
         if (Err != 0)
         {
+            xerr::LogMessage<state::FAILURE>(strXstr(std::format(L"Error while using _wfopen_s with {} Gave, Error code reported: {}", FilePath, Err)));
+
             switch (Err)
             {
-            case ENOENT: return { err::state::FILE_NOT_FOUND, std::format(L"#Error: File not found: {} for writing", FilePath) };
-            case EACCES: return { err::state::FAILURE, std::format(L"#Error: Permission denied: {} for writing", FilePath) };
-            case EINVAL: return { err::state::FAILURE, std::format(L"#Error: Invalid parameter passed to _wfopen_s. {} for writing", FilePath) };
-            default:     return { err::state::FAILURE, std::format(L"#Error: Failed to open file {} for writing with error code {}", FilePath, Err) };
+            case ENOENT: return xerr::create  <state::FILE_NOT_FOUND, "Error: File not found: for writing">();
+            case EACCES: return xerr::create_f<state, "Error: Permission denied: for writing">();
+            case EINVAL: return xerr::create_f<state, "Error: Invalid parameter passed to _wfopen_s. for writing">();
+            default:     return xerr::create_f<state, "Error: Failed to open file for writing with error code">();
             }
         }
-#else
+    #else
         m_pFile->m_pFP = fopen( wstring_to_utf8(FilePath).c_str(), pAttr );
         if( m_pFP )
         {
@@ -288,19 +300,19 @@ namespace xtextfile::details
 
     //------------------------------------------------------------------------------
 
-    err file::ReadingErrorCheck( void ) noexcept
+    xerr file::ReadingErrorCheck( void ) noexcept
     {
         if( m_States.m_isEOF || feof( m_pFP ) ) 
         {
             m_States.m_isEOF = true;
-            return err::create<err::state::UNEXPECTED_EOF, "Found the end of the file unexpectedly while reading" >();
+            return xerr::create<state::UNEXPECTED_EOF, "Found the end of the file unexpectedly while reading" >();
         }
-        return err::create_f< "Fail while reading the file, expected to read more data" >();
+        return xerr::create_f< state, "Fail while reading the file, expected to read more data" >();
     }
 
     //------------------------------------------------------------------------------
     template< typename T >
-    err file::Read( T& Buffer, int Size, int Count ) noexcept
+    xerr file::Read( T& Buffer, int Size, int Count ) noexcept
     {
         assert(m_pFP);
         if( m_States.m_isEOF ) return ReadingErrorCheck();
@@ -315,7 +327,7 @@ namespace xtextfile::details
 
     //------------------------------------------------------------------------------
 
-    err file::getC( int& c ) noexcept
+    xerr file::getC( int& c ) noexcept
     {
         assert(m_pFP);
         if( m_States.m_isEOF ) return ReadingErrorCheck();
@@ -328,14 +340,14 @@ namespace xtextfile::details
     //------------------------------------------------------------------------------
 
     template< typename T >
-    err file::Write( T& Buffer, int Size, int Count ) noexcept
+    xerr file::Write( T& Buffer, int Size, int Count ) noexcept
     {
         assert(m_pFP);
 
     #if defined(_MSC_VER)
         if ( Count != fwrite( &Buffer, Size, Count, m_pFP ) )
         {
-            return err::create_f< "Fail writing the required data" >();
+            return xerr::create_f< state, "Fail writing the required data" >();
         }
     #else
     #endif
@@ -351,7 +363,7 @@ namespace xtextfile::details
 
     //------------------------------------------------------------------------------
 
-    err file::WriteStr( const std::string_view Buffer ) noexcept
+    xerr file::WriteStr( const std::string_view Buffer ) noexcept
     {
         assert(m_pFP);
         // assert(Buffer.empty() || Buffer[Buffer.size() - 1] == 0);
@@ -361,7 +373,7 @@ namespace xtextfile::details
         {
             if ( Buffer.size() != fwrite( Buffer.data(), sizeof(char), Buffer.size(), m_pFP ) )
             {
-                return err::create_f< "Fail writing the required data" >();
+                return xerr::create_f< state, "Fail writing the required data" >();
             }
         }
         else
@@ -369,7 +381,7 @@ namespace xtextfile::details
             const std::uint64_t L           = Buffer.length();
             const std::uint64_t TotalData   = L>Buffer.size()?Buffer.size():L;
             if( TotalData != std::fwrite( Buffer.data(), 1, TotalData, m_pFP ) )
-                return err::create_f< "Fail 'fwrite' writing the required data" >();
+                return xerr::create_f< state, "Fail 'fwrite' writing the required data" >();
         }
     #else
     #endif
@@ -378,50 +390,50 @@ namespace xtextfile::details
 
     //------------------------------------------------------------------------------
 
-    err file::WriteFmtStr( const char* pFmt, ... ) noexcept
+    xerr file::WriteFmtStr( const char* pFmt, ... ) noexcept
     {
         va_list Args;
         va_start( Args, pFmt );
         if( std::vfprintf( m_pFP, pFmt, Args ) < 0 )
-            return err::create_f< "Fail 'fprintf' writing the required data" >();
+            return xerr::create_f< state, "Fail 'fprintf' writing the required data" >();
         va_end( Args );
         return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err file::WriteChar( char C, int Count ) noexcept
+    xerr file::WriteChar( char C, int Count ) noexcept
     {
         while( Count-- )
         {
             if( C != fputc( C, m_pFP ) )
-                return err::create_f< "Fail 'fputc' writing the required data" >();
+                return xerr::create_f< state, "Fail 'fputc' writing the required data" >();
         }
         return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err file::WriteData( std::string_view Buffer ) noexcept
+    xerr file::WriteData( std::string_view Buffer ) noexcept
     {
         assert( m_States.m_isBinary );
 
         if( Buffer.size() != std::fwrite( Buffer.data(), 1, Buffer.size(), m_pFP ) )
-            return err::create_f< "Fail 'fwrite' binary mode" >();
+            return xerr::create_f< state, "Fail 'fwrite' binary mode" >();
 
         return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err file::ReadWhiteSpace( int& c ) noexcept
+    xerr file::ReadWhiteSpace( int& c ) noexcept
     {
         // Read any spaces
-        err  Error;
-    
         do 
         {
-            if( getC(c).isError(Error) ) return Error;
+            if( auto Err = getC(c); Err ) 
+                return Err;
+
         } while( std::isspace( c ) );
 
         //
@@ -429,44 +441,47 @@ namespace xtextfile::details
         //
         while( c == '/' )
         {
-            if( getC(c).isError(Error) ) return Error;
+            if( auto Err = getC(c); Err ) 
+                return Err;
+
             if( c == '/' )
             {
                 // Skip the comment
                 do
                 {
-                    if( getC(c).isError(Error) ) return Error;
+                    if( auto Err = getC(c); Err ) 
+                        return Err;
+
                 } while( c != '\n' );
             }
             else
             {
-                return err::create_f< "Error reading file, unexpected symbol found [/]" >();
+                return xerr::create_f< state, "Error reading file, unexpected symbol found [/]" >();
             }
 
             // Skip spaces
-            if( ReadWhiteSpace(c).isError(Error) ) return Error;
+            if( auto Err = ReadWhiteSpace(c); Err ) 
+                return Err;
         }
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err file::HandleDynamicTable( int& Count ) noexcept
+    xerr file::HandleDynamicTable( int& Count ) noexcept
     {
-        err         Error;
         auto        LastPosition    = ftell( m_pFP );
         int         c;
                 
         Count           = -2;                   // -1. for the current header line, -1 for the types
         
         if( LastPosition == -1 )
-            return err::create_f< "Fail to get the cursor position in the file" >();
+            return xerr::create_f< state, "Fail to get the cursor position in the file" >();
 
-        if( getC(c).isError(Error) )
+        if( auto Err = getC(c); Err )
         {
-            Error.clear();
-            return err::create_f< "Unexpected end of file while searching the [*] for the dynamic" >();
+            return xerr::create_f< state, "Unexpected end of file while searching the [*] for the dynamic" >(Err);
         }
     
         do
@@ -474,7 +489,8 @@ namespace xtextfile::details
             if( c == '\n' )
             {
                 Count++;
-                if( ReadWhiteSpace(c).isError(Error) ) return Error;
+                if( auto Err = ReadWhiteSpace(c); Err ) 
+                    return Err;
             
                 if( c == '[' )
                 {
@@ -483,7 +499,8 @@ namespace xtextfile::details
             }
             else
             {
-                if( getC(c).isError(Error) ) return Error;
+                if( auto Err = getC(c); Err ) 
+                    return Err;
             
                 // if the end of the file is in a line then we need to count it
                 if( c == -1 )
@@ -497,13 +514,13 @@ namespace xtextfile::details
 
     
         if( Count <= 0  )
-            return err::create_f< "Unexpected end of file while counting rows for the dynamic table" >();
+            return xerr::create_f< state, "Unexpected end of file while counting rows for the dynamic table" >();
     
         // Rewind to the start
         if( fseek( m_pFP, LastPosition, SEEK_SET ) )
-            return err::create_f< "Fail to reposition the cursor back to the right place while reading the file" >();
+            return xerr::create_f< state, "Fail to reposition the cursor back to the right place while reading the file" >();
 
-        return Error;
+        return {};
     }
 }
 
@@ -542,7 +559,7 @@ namespace xtextfile
 
     //-----------------------------------------------------------------------------------------------------
 
-    err2 stream::openForReading( const std::wstring_view FilePath ) noexcept
+    xerr stream::openForReading( const std::wstring_view FilePath ) noexcept
     {
         //
         // Check to see if we can get a hint from the file name to determine if it is binary or text
@@ -574,8 +591,8 @@ namespace xtextfile
         // Okay make sure that we say that we are not reading the file
         // this will force the user_types to stick with the writing functions
         //
-        err2 Failure;
-        scope_end_callback CleanUp([&] { if (Failure) close(); });
+        xerr Error;
+        xerr::cleanup CleanUp(Error, [&] { close(); });
 
         //
         // Determine signature (check if we are reading a binary file or not)
@@ -583,13 +600,13 @@ namespace xtextfile
         if ( isTextFile < 2 )
         {
             std::uint32_t Signature = 0;
-            if( m_File.Read(Signature).isError(Failure) && (Failure.getState() != err::state::UNEXPECTED_EOF) )
+            if(Error = m_File.Read(Signature); Error && (Error.getState<state>() != state::UNEXPECTED_EOF) )
             {
-                return Failure;
+                return Error;
             }
             else 
             {
-                Failure.clear();
+                Error.clear();
                 if( Signature == std::uint32_t('NOIL') || Signature == std::uint32_t('LION') )
                 {
                     if( Signature == std::uint32_t('LION') )
@@ -598,8 +615,8 @@ namespace xtextfile
                 else // We are dealing with a text file, if so the reopen it as such
                 {
                     m_File.close();
-                    if( m_File.openForReading(FilePath, false).isError(Failure) )
-                        return Failure;
+                    if(Error = m_File.openForReading(FilePath, false); Error)
+                        return Error;
                 }
             }
         }
@@ -615,14 +632,15 @@ namespace xtextfile
         //
         // Read the first record
         //
-        if( ReadRecord().isError( Failure ) ) return Failure;
+        if(Error = ReadRecord(); Error ) 
+            return Error;
 
-        return Failure;
+        return {};
     }
 
     //-----------------------------------------------------------------------------------------------------
 
-    err2 stream::openForWriting( const std::wstring_view FilePath, file_type FileType, flags Flags ) noexcept
+    xerr stream::openForWriting( const std::wstring_view FilePath, file_type FileType, flags Flags ) noexcept
     {
         //
         // Open the file
@@ -634,8 +652,8 @@ namespace xtextfile
         // Okay make sure that we say that we are not reading the file
         // this will force the user_types to stick with the writing functions
         //
-        err2                Failure;
-        scope_end_callback  CleanUp([&] { if (Failure) close(); });
+        xerr                Error;
+        xerr::cleanup CleanU(Error, [&] { close(); });
 
 
         //
@@ -645,8 +663,8 @@ namespace xtextfile
         {
             // Write binary signature
             const std::uint32_t Signature = std::uint32_t('NOIL');
-            if( m_File.Write( Signature ).isError( Failure ) )
-                return Failure;
+            if( Error = m_File.Write( Signature ); Error )
+                return Error;
         }
 
         //
@@ -663,7 +681,7 @@ namespace xtextfile
         // Growing this guy is really slow so we create a decent count from the start
         if( m_Memory.capacity() < 2048 ) m_Memory.resize(m_Memory.size() + 2048 );
 
-        return Failure;
+        return {};
     }
 
     //-----------------------------------------------------------------------------------------------------
@@ -675,7 +693,7 @@ namespace xtextfile
 
     //------------------------------------------------------------------------------------------------
 
-    err2 stream::Open( bool isRead, std::wstring_view View, file_type FileType, flags Flags ) noexcept
+    xerr stream::Open( bool isRead, std::wstring_view View, file_type FileType, flags Flags ) noexcept
     {
         if( isRead )
         {
@@ -747,10 +765,8 @@ namespace xtextfile
 
     //------------------------------------------------------------------------------
 
-    err stream::WriteRecord( const char* pHeaderName, std::size_t Count ) noexcept
+    xerr stream::WriteRecord( const char* pHeaderName, std::size_t Count ) noexcept
     {
-        err Error;
-
         assert( pHeaderName );
         assert( m_File.m_States.m_isReading == false );
 
@@ -785,7 +801,7 @@ namespace xtextfile
         m_iMemOffet     = 0;
         m_nColumns      = 0;
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
@@ -814,16 +830,14 @@ namespace xtextfile
 
     //------------------------------------------------------------------------------
 
-    err stream::WriteComment( const std::string_view Comment ) noexcept
+    xerr stream::WriteComment( const std::string_view Comment ) noexcept
     {
-        err Error;
-
         if( m_File.m_States.m_isReading )
-            return Error;
+            return {};
 
         if( m_File.m_States.m_isBinary )
         {
-            return Error;
+            return {};
         }
         else
         {
@@ -831,13 +845,13 @@ namespace xtextfile
             std::size_t iStart = 0;
             std::size_t iEnd   = iStart;
 
-            if( m_File.WriteChar( '\n' ).isError( Error ) )
-                return Error;
+            if( auto Err = m_File.WriteChar( '\n' ); Err )
+                return Err;
 
             do 
             {
-                if( m_File.WriteStr( "//" ).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( "//" ); Err )
+                    return Err;
 
                 while( iEnd < length)
                 {
@@ -845,8 +859,8 @@ namespace xtextfile
                     else                          iEnd++;
                 }
 
-                if( m_File.WriteStr( { Comment.data() + iStart, static_cast<std::size_t>(iEnd - iStart) } ).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( { Comment.data() + iStart, static_cast<std::size_t>(iEnd - iStart) } ); Err )
+                    return Err;
 
                 if( iEnd == length) break;
 
@@ -856,15 +870,13 @@ namespace xtextfile
             } while( true );
         }
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err stream::WriteUserTypes( void ) noexcept
+    xerr stream::WriteUserTypes( void ) noexcept
     {
-        err Error;
-
         if( m_File.m_States.m_isBinary )
         {
             bool bHaveUserTypes = false;
@@ -879,17 +891,17 @@ namespace xtextfile
                 if( bHaveUserTypes == false )
                 {
                     bHaveUserTypes = true;
-                    if( m_File.WriteChar( '<' ).isError(Error) )
-                        return Error;
+                    if( auto Err = m_File.WriteChar( '<' ); Err )
+                        return Err;
                 }
 
                 // Write the name 
-                if( m_File.WriteStr( { UserType.m_Name.data(), static_cast<std::size_t>(UserType.m_NameLength + 1) } ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( { UserType.m_Name.data(), static_cast<std::size_t>(UserType.m_NameLength + 1) } ); Err )
+                    return Err;
 
                 // Write type/s
-                if( m_File.WriteStr( { UserType.m_SystemTypes.data(), static_cast<std::size_t>(UserType.m_nSystemTypes+1) } ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( { UserType.m_SystemTypes.data(), static_cast<std::size_t>(UserType.m_nSystemTypes+1) } ); Err )
+                    return Err;
             }
         }
         else
@@ -905,7 +917,9 @@ namespace xtextfile
 
                 if( bNewTypes == false ) 
                 {
-                    if( m_File.WriteStr( "\n// New Types\n< " ).isError(Error) ) return Error;
+                    if( auto Err = m_File.WriteStr( "\n// New Types\n< " ); Err ) 
+                        return Err;
+
                     bNewTypes = true;
                 }
 
@@ -913,18 +927,19 @@ namespace xtextfile
                 std::array<char,256> temp;
 
                 auto length = sprintf_s( temp.data(), temp.size(), "%s:%s ", UserType.m_Name.data(), UserType.m_SystemTypes.data());
-                if( m_File.WriteStr( {temp.data(), static_cast<std::size_t>(length)} ) .isError(Error) ) return Error;
+                if( auto Err = m_File.WriteStr( {temp.data(), static_cast<std::size_t>(length)} ); Err ) 
+                    return Err;
             }
 
-            if( bNewTypes ) if( m_File.WriteStr( ">\n" ).isError(Error) ) return Error;
+            if( bNewTypes ) if( auto Err = m_File.WriteStr( ">\n" ); Err ) return Err;
         }
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
     
-    err stream::WriteColumn( crc32 UserType, const char* pColumnName, std::span<details::arglist::types> Args) noexcept
+    xerr stream::WriteColumn( crc32 UserType, const char* pColumnName, std::span<details::arglist::types> Args) noexcept
     {
         //
         // Make sure we always have enough memory
@@ -1247,10 +1262,8 @@ namespace xtextfile
 
     //------------------------------------------------------------------------------
 
-    err stream::WriteLine( void ) noexcept
+    xerr stream::WriteLine( void ) noexcept
     {
-        err  Error;
-
         assert( m_File.m_States.m_isReading == false );
 
         // Make sure that the user_types don't try to write more lines than expected
@@ -1268,7 +1281,7 @@ namespace xtextfile
         //
         if( (m_iLine < m_Record.m_Count && (m_iLine%m_nLinesBeforeFileWrite) != 0) )
         {
-            return Error;
+            return {};
         }
 
 
@@ -1282,8 +1295,8 @@ namespace xtextfile
                 //
                 // Write any pending user_types types
                 //
-                if( WriteUserTypes().isError(Error))
-                    return Error;
+                if( auto Err = WriteUserTypes(); Err)
+                    return Err;
             
                 //
                 // Write record header
@@ -1292,65 +1305,66 @@ namespace xtextfile
                 // First handle the case that is a label  
                 if( m_nColumns == -1 )
                 {
-                    if (m_File.WriteChar('@').isError(Error))
-                        return Error;
+                    if (auto Err = m_File.WriteChar('@'); Err)
+                        return Err;
 
-                    if (m_File.WriteChar('[').isError(Error))
-                        return Error;
+                    if (auto Err = m_File.WriteChar('['); Err)
+                        return Err;
 
-                    if (m_File.WriteStr({ m_Record.m_Name.data(), std::strlen(m_Record.m_Name.data()) + 1 }).isError(Error))
-                        return Error;
+                    if (auto Err = m_File.WriteStr({ m_Record.m_Name.data(), std::strlen(m_Record.m_Name.data()) + 1 }); Err )
+                        return Err;
 
                     goto CLEAR;
                 }
 
-                if( m_File.WriteChar( '[' ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteChar( '[' ); Err )
+                    return Err;
 
-                if( m_File.WriteStr( { m_Record.m_Name.data(), std::strlen( m_Record.m_Name.data() )+1 } ).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( { m_Record.m_Name.data(), std::strlen( m_Record.m_Name.data() )+1 } ); Err )
+                    return Err;
 
-                if( m_File.Write( m_Record.m_Count ).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.Write( m_Record.m_Count ); Err )
+                    return Err;
 
                 //
                 // Write types
                 //
                 {
                     std::uint8_t nColumns = static_cast<std::uint8_t>(m_nColumns);
-                    if( m_File.Write( nColumns ).isError( Error ) ) return Error;
+                    if( auto Err = m_File.Write( nColumns ); Err ) 
+                        return Err;
                 }
 
                 for( int i=0; i<m_nColumns; ++i )
                 {
                     auto& Column = m_Columns[i];
 
-                    if( m_File.WriteStr( std::string_view{ Column.m_Name.data(), static_cast<std::size_t>(Column.m_NameLength) } ).isError( Error ) )
-                        return Error;
+                    if( auto Err = m_File.WriteStr( std::string_view{ Column.m_Name.data(), static_cast<std::size_t>(Column.m_NameLength) } ); Err )
+                        return Err;
 
                     if( Column.m_nTypes == -1 )
                     {
-                        if( m_File.WriteChar( '?' ).isError( Error ) )
-                            return Error;
+                        if( auto Err = m_File.WriteChar( '?' ); Err )
+                            return Err;
                     }
                     else
                     {
                         if( Column.m_UserType.m_Value )
                         {
-                            if( m_File.WriteChar( ';' ).isError( Error ) )
-                                return Error;
+                            if( auto Err = m_File.WriteChar( ';' ); Err )
+                                return Err;
 
                             std::uint8_t Index = static_cast<std::uint8_t>(getUserType(Column.m_UserType) - m_UserTypes.data());  // m_UserTypes.getIndexByEntry<std::uint8_t>( *getUserType(Column.m_UserType) );
-                            if( m_File.Write( Index ).isError( Error ) )
-                                return Error;
+                            if( auto Err = m_File.Write( Index ); Err )
+                                return Err;
                         }
                         else
                         {
-                            if( m_File.WriteChar( ':' ).isError( Error ) )
-                                return Error;
+                            if( auto Err = m_File.WriteChar( ':' ); Err )
+                                return Err;
 
-                            if( m_File.WriteStr( { Column.m_SystemTypes.data(), static_cast<std::size_t>(Column.m_nTypes + 1) } ).isError( Error ) )
-                                return Error;
+                            if( auto Err = m_File.WriteStr( { Column.m_SystemTypes.data(), static_cast<std::size_t>(Column.m_nTypes + 1) } ); Err )
+                                return Err;
                         }
                     }
                 }
@@ -1379,19 +1393,19 @@ namespace xtextfile
                             auto            p     = getUserType( DynamicFields.m_UserType );
                             std::uint8_t    Index = static_cast<std::uint8_t>(p - m_UserTypes.data());
 
-                            if( m_File.WriteChar( ';' ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteChar( ';' ); Err )
+                                return Err;
 
-                            if( m_File.Write( Index ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.Write( Index ); Err )
+                                return Err;
                         }
                         else
                         {
-                            if( m_File.WriteChar( ':' ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteChar( ':' ); Err )
+                                return Err;
 
-                            if( m_File.WriteStr( std::string_view{ DynamicFields.m_SystemTypes.data(), static_cast<std::size_t>(DynamicFields.m_nTypes + 1) } ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteStr( std::string_view{ DynamicFields.m_SystemTypes.data(), static_cast<std::size_t>(DynamicFields.m_nTypes + 1) } ); Err )
+                                return Err;
                         }
 
                         //
@@ -1400,8 +1414,8 @@ namespace xtextfile
                         for( int n=0; n<DynamicFields.m_nTypes; ++n )
                         {
                             const auto& FieldInfo   = Column.m_FieldInfo[ DynamicFields.m_iField + n ];
-                            if( m_File.WriteData( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteData( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ); Err )
+                                return Err;
                         }
                     }
                     else
@@ -1410,8 +1424,8 @@ namespace xtextfile
                         {
                             const auto  Index       = l*Column.m_nTypes + n;
                             const auto& FieldInfo   = Column.m_FieldInfo[ Index ];
-                            if( m_File.WriteData( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteData( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ); Err )
+                                return Err;
                         }
                     }
                 }
@@ -1453,8 +1467,8 @@ namespace xtextfile
         //
         if(m_nColumns == -1)
         {
-            if (m_File.WriteFmtStr("\n@[ %s ]\n", m_Record.m_Name.data()).isError(Error))
-                return Error;
+            if ( auto Err = m_File.WriteFmtStr("\n@[ %s ]\n", m_Record.m_Name.data()); Err)
+                return Err;
             
             //
             // Clear the memory pointer
@@ -1593,29 +1607,29 @@ namespace xtextfile
             //
             // Write any pending user_types types
             //
-            if( WriteUserTypes().isError( Error ) )
-                return Error;
+            if( auto Err = WriteUserTypes(); Err )
+                return Err;
         
             //
             // Write header
             //
             if( m_Record.m_bWriteCount )
             {
-                if( m_File.WriteFmtStr( "\n[ %s : %d ]\n", m_Record.m_Name.data(), m_Record.m_Count ).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.WriteFmtStr( "\n[ %s : %d ]\n", m_Record.m_Name.data(), m_Record.m_Count ); Err )
+                    return Err;
             }
             else
             {
-                if( m_File.WriteFmtStr( "\n[ %s ]\n", m_Record.m_Name.data() ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteFmtStr( "\n[ %s ]\n", m_Record.m_Name.data() ); Err )
+                    return Err;
             }
 
             //
             // Write the types
             //
             {
-                if( m_File.WriteStr( "{ " ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( "{ " ); Err )
+                    return Err;
 
                 for( int i = 0; i<m_nColumns; ++i )
                 {
@@ -1623,8 +1637,8 @@ namespace xtextfile
 
                     if( Column.m_nTypes == -1 )
                     {
-                        if( m_File.WriteFmtStr( "%s:?", Column.m_Name.data() ).isError(Error) )
-                            return Error;
+                        if( auto Err = m_File.WriteFmtStr( "%s:?", Column.m_Name.data() ); Err )
+                            return Err;
                     }
                     else
                     {
@@ -1633,54 +1647,59 @@ namespace xtextfile
                             auto p = getUserType(Column.m_UserType);
                             assert(p);
 
-                            if( m_File.WriteFmtStr( "%s;%s", Column.m_Name.data(), p->m_Name.data() ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteFmtStr( "%s;%s", Column.m_Name.data(), p->m_Name.data() ); Err )
+                                return Err;
                         }
                         else
                         {
-                            if( m_File.WriteFmtStr( "%s:%s", Column.m_Name.data(), Column.m_SystemTypes.data() ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteFmtStr( "%s:%s", Column.m_Name.data(), Column.m_SystemTypes.data() ); Err )
+                                return Err;
                         }
                     }
 
                     // Write spaces to reach the end of the column
                     if( Column.m_FormatWidth > Column.m_FormatNameWidth )
                     {
-                        if( m_File.WriteChar( ' ', Column.m_FormatWidth - Column.m_FormatNameWidth ).isError(Error) )
-                            return Error;
+                        if( auto Err = m_File.WriteChar( ' ', Column.m_FormatWidth - Column.m_FormatNameWidth ); Err )
+                            return Err;
                     }
 
                     if( (i+1) != m_nColumns )
                     {
                         // Write spaces between columns
-                        if( m_File.WriteChar( ' ', m_nSpacesBetweenColumns ).isError(Error) ) return Error;
+                        if( auto Err = m_File.WriteChar( ' ', m_nSpacesBetweenColumns ); Err ) 
+                            return Err;
                     }
                 }
 
-                if( m_File.WriteFmtStr( " }\n" ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteFmtStr( " }\n" ); Err )
+                    return Err;
             }
 
             //
             // Write a nice underline for the columns
             //
             {
-                if( m_File.WriteStr( "//" ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( "//" ); Err )
+                    return Err;
 
                 for( int i = 0; i<m_nColumns; ++i )
                 {
                     auto& Column  = m_Columns[i];
 
-                    if( m_File.WriteChar( '-', Column.m_FormatWidth ).isError(Error) )
-                        return Error;
+                    if( auto Err = m_File.WriteChar( '-', Column.m_FormatWidth ); Err )
+                        return Err;
 
                     // Get ready for the next type
-                    if( (i+1) != m_nColumns) if( m_File.WriteChar( ' ', m_nSpacesBetweenColumns ).isError(Error) ) return Error;
+                    if( (i+1) != m_nColumns) 
+                    {
+                        if( auto Err = m_File.WriteChar( ' ', m_nSpacesBetweenColumns ); Err ) 
+                            return Err;
+                    }
                 }
 
-                if( m_File.WriteChar( '\n' ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteChar( '\n' ); Err )
+                    return Err;
             }
         }
 
@@ -1693,7 +1712,8 @@ namespace xtextfile
             for( int l = 0; l<L; ++l )
             {
                 // Prefix with two spaces to align things
-                if( m_File.WriteChar( ' ', 2 ).isError(Error) ) return Error;
+                if( auto Err = m_File.WriteChar( ' ', 2 ); Err ) 
+                    return Err;
 
                 for( int i = 0; i<m_nColumns; ++i )
                 {
@@ -1710,21 +1730,21 @@ namespace xtextfile
                         {
                             auto p = getUserType( DynamicFields.m_UserType );
                             assert(p);
-                            if( m_File.WriteFmtStr( ";%s", p->m_Name.data() ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteFmtStr( ";%s", p->m_Name.data() ); Err )
+                                return Err;
 
                             // Fill spaces to reach the next column
-                            if( m_File.WriteChar( ' ', Column.m_SubColumn[0].m_FormatWidth - p->m_NameLength -1 + m_nSpacesBetweenFields ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteChar( ' ', Column.m_SubColumn[0].m_FormatWidth - p->m_NameLength -1 + m_nSpacesBetweenFields ); Err )
+                                return Err;
                         }
                         else
                         {
-                            if( m_File.WriteFmtStr( ":%s", DynamicFields.m_SystemTypes.data() ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteFmtStr( ":%s", DynamicFields.m_SystemTypes.data() ); Err )
+                                return Err;
 
                             // Fill spaces to reach the next column
-                            if( m_File.WriteChar( ' ', Column.m_SubColumn[0].m_FormatWidth - DynamicFields.m_nTypes -1 + m_nSpacesBetweenFields ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteChar( ' ', Column.m_SubColumn[0].m_FormatWidth - DynamicFields.m_nTypes -1 + m_nSpacesBetweenFields ); Err )
+                                return Err;
                         }
 
                         //
@@ -1734,27 +1754,34 @@ namespace xtextfile
                         {
                             const auto& FieldInfo   = Column.m_FieldInfo[ DynamicFields.m_iField + n ];
                     
-                            if( m_File.WriteStr( std::string{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
-                                return Error;
+                            if( auto Err = m_File.WriteStr( std::string{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ); Err )
+                                return Err;
                                 
                             // Get ready for the next type
-                            if( (DynamicFields.m_nTypes-1) != n) if( m_File.WriteChar( ' ', m_nSpacesBetweenFields ).isError(Error) )
-                                return Error;
+                            if( (DynamicFields.m_nTypes-1) != n)
+                            {
+                                if(auto Err = m_File.WriteChar( ' ', m_nSpacesBetweenFields ); Err )
+                                    return Err;
+                            }
                         }
 
                         // Pad the width to match the columns width
-                        if( m_File.WriteChar( ' ', Column.m_FormatWidth 
-                            - DynamicFields.m_FormatWidth
-                            - Column.m_SubColumn[0].m_FormatWidth 
-                            - m_nSpacesBetweenFields  ).isError(Error) )
-                            return Error;
+                        if( auto Err = m_File.WriteChar( ' ',    Column.m_FormatWidth 
+                                                               - DynamicFields.m_FormatWidth
+                                                               - Column.m_SubColumn[0].m_FormatWidth 
+                                                               - m_nSpacesBetweenFields  ); Err )
+                            return Err;
                     }
                     else
                     {
                         const auto  Center      = Column.m_FormatWidth - Column.m_FormatTotalSubColumns;
 
                         if( (Center>>1) > 0 )
-                            if( m_File.WriteChar( ' ', Center>>1).isError(Error) ) return Error;
+                        {
+                            if ( auto Err = m_File.WriteChar(' ', Center >> 1); Err) 
+                                return Err;
+                        }
+                            
 
                         for( int n=0; n<Column.m_nTypes; ++n )
                         {
@@ -1765,54 +1792,64 @@ namespace xtextfile
                             if( Column.m_SystemTypes[n] == 'f' || Column.m_SystemTypes[n] == 'F' )
                             {
                                 // point align Right align
-                                if( m_File.WriteChar( ' ', SubColumn.m_FormatIntWidth - FieldInfo.m_IntWidth ).isError(Error) )
-                                    return Error;
+                                if( auto Err = m_File.WriteChar( ' ', SubColumn.m_FormatIntWidth - FieldInfo.m_IntWidth ); Err )
+                                    return Err;
 
-                                if( m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
-                                    return Error;
+                                if( auto Err = m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ); Err )
+                                    return Err;
 
                                 // Write spaces to reach the next sub-column
                                 int nSpaces = SubColumn.m_FormatWidth - ( SubColumn.m_FormatIntWidth + FieldInfo.m_Width - FieldInfo.m_IntWidth );
-                                if( m_File.WriteChar( ' ', nSpaces ).isError(Error) ) return Error;
+                                if( auto Err = m_File.WriteChar( ' ', nSpaces ); Err ) 
+                                    return Err;
                             }
                             else if( Column.m_SystemTypes[n] == 's' || Column.m_SystemTypes[n] == 'S')
                             {
                                 // Left align
-                                if( m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
-                                    return Error;
+                                if( auto Err = m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ); Err )
+                                    return Err;
 
-                                if( m_File.WriteChar( ' ', SubColumn.m_FormatWidth - FieldInfo.m_Width ).isError(Error) )
-                                    return Error;
+                                if( auto Err = m_File.WriteChar( ' ', SubColumn.m_FormatWidth - FieldInfo.m_Width ); Err )
+                                    return Err;
                             }
                             else
                             {
                                 // Right align
-                                if( m_File.WriteChar( ' ', SubColumn.m_FormatWidth - FieldInfo.m_Width ).isError(Error) )
-                                    return Error;
+                                if( auto Err = m_File.WriteChar( ' ', SubColumn.m_FormatWidth - FieldInfo.m_Width ); Err )
+                                    return Err;
 
-                                if( m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ).isError(Error) )
-                                    return Error;
+                                if( auto Err = m_File.WriteStr( std::string_view{ &m_Memory[ FieldInfo.m_iData ], static_cast<std::size_t>(FieldInfo.m_Width) } ); Err )
+                                    return Err;
                             }
 
                             // Write spaces to reach the next sub-column
                             if( (n+1) != Column.m_nTypes ) 
                             {
-                                if( m_File.WriteChar( ' ', m_nSpacesBetweenFields ).isError(Error) ) return Error;
+                                if( auto Err = m_File.WriteChar( ' ', m_nSpacesBetweenFields ); Err ) 
+                                    return Err;
                             }
                         }
 
                         // Add spaces to finish this column
                         if( Center > 0 )
-                            if( m_File.WriteChar( ' ', Center - (Center>>1) ).isError(Error) ) return Error;
+                        {
+                            if ( auto Err = m_File.WriteChar(' ', Center - (Center >> 1)); Err ) 
+                                return Err;
+                        }
+                            
                     }
 
                     // Write spaces to reach the next column
-                    if((i+1) != m_nColumns) if( m_File.WriteChar( ' ', m_nSpacesBetweenColumns ).isError(Error) ) return Error;
+                    if((i+1) != m_nColumns) 
+                    {
+                        if( auto Err = m_File.WriteChar( ' ', m_nSpacesBetweenColumns ); Err ) 
+                            return Err;
+                    }
                 }
 
                 // End the line
-                if( m_File.WriteStr( "\n" ).isError(Error) )
-                    return Error;
+                if( auto Err = m_File.WriteStr( "\n" ); Err )
+                    return Err;
             }
         }
 
@@ -1834,7 +1871,7 @@ namespace xtextfile
         // Clear the memory pointer
         m_iMemOffet = 0;
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
@@ -1855,15 +1892,13 @@ namespace xtextfile
 
     //------------------------------------------------------------------------------
 
-    err stream::BuildTypeInformation( const char* pFieldName ) noexcept
+    xerr stream::BuildTypeInformation( const char* pFieldName ) noexcept
     {
-        err Error;
-        scope_end_callback Scope( [&]
+        xerr Error;
+        xerr::cleanup Scope( Error, [&]
         {
-            if ( Error )
-            {
-                printf("%s [%s] of Record[%s]\n", Error.m_pMessage, pFieldName, m_Record.m_Name.data() );
-            }
+            auto StringView = Error.getMessage();
+            printf("%.*s [%s] of Record[%s]\n", static_cast<int>(StringView.size()), StringView.data(), pFieldName, m_Record.m_Name.data() );
         });
 
         // Make sure we have enough columns to store our data
@@ -1884,7 +1919,7 @@ namespace xtextfile
         for( Column.m_NameLength=0; pFieldName[Column.m_NameLength] !=';' && pFieldName[Column.m_NameLength] !=':'; ++Column.m_NameLength )
         {
             if( pFieldName[Column.m_NameLength]==0 || Column.m_NameLength >= static_cast<int>(Column.m_Name.size()) ) 
-                return err::create_f< "Fail to read a column named, either string is too long or it has no types">();
+                return Error = xerr::create_f< state, "Fail to read a column named, either string is too long or it has no types">();
 
             Column.m_Name[Column.m_NameLength] = pFieldName[Column.m_NameLength];
         }
@@ -1897,7 +1932,7 @@ namespace xtextfile
             Column.m_UserType = crc32::computeFromString( &pFieldName[Column.m_NameLength+1] );
             auto p = getUserType( Column.m_UserType );
             if( p == nullptr )
-                return err::create_f< "Fail to find the user type for a column" >();
+                return Error = xerr::create_f< state, "Fail to find the user type for a column" >();
 
             Column.m_nTypes = p->m_nSystemTypes;
             strcpy_s( Column.m_SystemTypes.data(), Column.m_SystemTypes.size(), p->m_SystemTypes.data());
@@ -1916,7 +1951,7 @@ namespace xtextfile
             {
                 Column.m_nTypes = Strcpy_s( Column.m_SystemTypes.data(), Column.m_SystemTypes.size(), &pFieldName[Column.m_NameLength + 1]);
                 if( Column.m_nTypes <= 0 )
-                    return err::create_f<"Fail to read a column, type. not system types specified" >();
+                    return Error = xerr::create_f<state, "Fail to read a column, type. not system types specified" >();
 
                 // We remove the null termination
                 Column.m_nTypes--;
@@ -1925,15 +1960,13 @@ namespace xtextfile
             Column.m_UserType.m_Value = 0;
         }
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err stream::ReadFieldUserType( const char* pColumnName ) noexcept
+    xerr stream::ReadFieldUserType( const char* pColumnName ) noexcept
     {
-        err Error;
-
         if( m_iLine == 1 )
         {
             m_DataMapping.emplace_back() = -1;
@@ -1969,31 +2002,32 @@ namespace xtextfile
             if( bFound == false )
             {
                 printf( "Error: Unable to find the field %s\n", pColumnName);
-                return err::create<err::state::FIELD_NOT_FOUND, "Unable to find the filed requested" >();
+                return xerr::create<state::FIELD_NOT_FOUND, "Unable to find the filed requested" >();
             }
         }
 
         if( -1 == m_DataMapping[m_iColumn] )
-            return err::create< err::state::FIELD_NOT_FOUND, "Skipping unknown field" >();
+            return xerr::create< state::FIELD_NOT_FOUND, "Skipping unknown field" >();
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err stream::ReadFieldUserType( crc32& UserType, const char* pColumnName ) noexcept
+    xerr stream::ReadFieldUserType( crc32& UserType, const char* pColumnName ) noexcept
     {
-        err Error;
-        scope_end_callback Scope( [&]
+        xerr Error;
+        xerr::cleanup Scope( Error, [&]
         {
             // If we have any error lets make sure we always move to the next column
-             if (Error) m_iColumn++;
+             m_iColumn++;
         });
 
         //
         // Read the new field
         //
-        if( ReadFieldUserType(pColumnName).isError(Error) ) return Error; 
+        if( Error = ReadFieldUserType(pColumnName); Error ) 
+            return Error; 
 
         //
         // Get ready to read to column
@@ -2017,26 +2051,26 @@ namespace xtextfile
         //
         m_iColumn++;
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
 
-    err stream::ReadColumn( const crc32 iUserRef, const char* pColumnName, std::span<details::arglist::types> Args ) noexcept
+    xerr stream::ReadColumn( const crc32 iUserRef, const char* pColumnName, std::span<details::arglist::types> Args ) noexcept
     {
         assert( m_iLine > 0 );
 
-        err Error;
-        scope_end_callback Scope( [&]
+        xerr Error;
+        xerr::cleanup Scope( Error, [&]
         {
             // If we have any error lets make sure we always move to the next column
-             if (Error) m_iColumn++;
+             m_iColumn++;
         });
 
         //
         // Get the user type if any
         //
-        if( ReadFieldUserType( pColumnName ).isError(Error) )
+        if( Error = ReadFieldUserType( pColumnName ); Error )
             return Error;
 
         //
@@ -2090,7 +2124,7 @@ namespace xtextfile
                     if( isCompatibleTypes( D.m_SystemTypes[i], Args[i] ) == false )
                     {
                         printf("Found the column but the types did not match. %s\n", pColumnName);
-                        return err::create< err::state::READ_TYPES_DONTMATCH, "Fail to find the correct type" >();
+                        return Error = xerr::create< state::READ_TYPES_DONTMATCH, "Fail to find the correct type" >();
                     }
                 }
             }
@@ -2098,7 +2132,7 @@ namespace xtextfile
             {
                 // We don't have the same count
                 printf("Found the column but the type count did not match. %s\n", pColumnName);
-                return err::create<err::state::READ_TYPES_DONTMATCH, "Fail to find the correct type" >();
+                return Error = xerr::create<state::READ_TYPES_DONTMATCH, "Fail to find the correct type" >();
             }
         }
 
@@ -2162,12 +2196,11 @@ namespace xtextfile
 
     //------------------------------------------------------------------------------
 
-    err stream::ReadLine( void ) noexcept
+    xerr stream::ReadLine( void ) noexcept
     {
         int                     c;
         int                     Size=0;
         std::array<char,256>    Buffer;
-        err                     Error;
 
         // Make sure that the user_types doesn't read more lines than the record has
         assert( m_iLine <= m_Record.m_Count );
@@ -2186,8 +2219,8 @@ namespace xtextfile
                 // Read the number of columns
                 {
                     std::uint8_t nColumns;
-                    if( m_File.Read(nColumns).isError(Error) ) 
-                        return Error;
+                    if( auto Err = m_File.Read(nColumns); Err ) 
+                        return Err;
 
                     m_nColumns = nColumns;
                     m_Columns.clear();
@@ -2205,7 +2238,9 @@ namespace xtextfile
                     Column.m_NameLength = 0;
                     do 
                     {
-                        if( m_File.getC(c).isError(Error) ) return Error;
+                        if( auto Err = m_File.getC(c); Err ) 
+                            return Err;
+
                         Column.m_Name[Column.m_NameLength++] = c;
                     } while( c != ':'
                           && c != ';'
@@ -2220,7 +2255,9 @@ namespace xtextfile
                         Column.m_nTypes = 0;
                         do 
                         {
-                            if( m_File.getC(c).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(c); Err ) 
+                                return Err;
+
                             Column.m_SystemTypes[Column.m_nTypes++] = c;
                         } while(c);
                         Column.m_nTypes--;
@@ -2229,7 +2266,8 @@ namespace xtextfile
                     else if( c == ';' )
                     { 
                         std::uint8_t Index;
-                        if( m_File.Read(Index).isError(Error) ) return Error;
+                        if( auto Err = m_File.Read(Index); Err )    
+                            return Err;
 
                         auto& UserType = m_UserTypes[Index];
                         Column.m_UserType       = UserType.m_CRC;
@@ -2246,17 +2284,17 @@ namespace xtextfile
             else
             {
                 // Read out all the white space
-                if( m_File.ReadWhiteSpace(c).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.ReadWhiteSpace(c); Err )
+                    return Err;
 
                 //
                 // we should have the right character by now
                 //
-                if( c != '{' ) return err::create_f< "Unable to find the types" >();
+                if( c != '{' ) return xerr::create_f< state, "Unable to find the types" >();
 
                 // Get the next token
-                if( m_File.ReadWhiteSpace(c).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.ReadWhiteSpace(c); Err )
+                    return Err;
 
                 do
                 {
@@ -2265,19 +2303,20 @@ namespace xtextfile
                     while( ValidateColumnChar(c) || c == ';' || c == ':' )
                     {
                         Buffer[Size++] = c;                    
-                        if( m_File.getC(c).isError(Error) ) return Error;
+                        if( auto Err = m_File.getC(c); Err ) 
+                            return Err;
                     }
             
                     // Terminate the string
                     Buffer[Size++] = 0;
 
                     // Okay build the type information
-                    if( BuildTypeInformation( Buffer.data() ).isError(Error) ) 
-                        return Error;
+                    if( auto Err = BuildTypeInformation( Buffer.data() ); Err ) 
+                        return Err;
 
                     // Read any white space
-                    if( m_File.ReadWhiteSpace(c).isError( Error ) )
-                        return Error;
+                    if( auto Err = m_File.ReadWhiteSpace(c); Err )
+                        return Err;
 
                 } while( c != '}' );
             }
@@ -2288,17 +2327,17 @@ namespace xtextfile
         //
         if( m_File.m_States.m_isBinary )
         {
-            auto ReadData = [&]( details::field_info& Info, int SystemType )
+            auto ReadData = [&]( details::field_info& Info, int SystemType ) ->xerr
             {
-                err Error;
-
                 switch( SystemType )
                 {
                     case 'c': 
                     case 'h':
                     {
                         std::uint8_t H;
-                        if( m_File.Read(H).isError(Error) ) return Error;
+                        if( auto Err = m_File.Read(H); Err ) 
+                            return Err;
+
                         Info.m_iData = align_to( m_iMemOffet, 1); m_iMemOffet = Info.m_iData + 1; reinterpret_cast<std::uint8_t &>(m_Memory[Info.m_iData]) = static_cast<std::uint8_t>(H);
                         Info.m_Width = 1;
                         break;
@@ -2307,7 +2346,9 @@ namespace xtextfile
                     case 'H':
                     {
                         std::uint16_t H;
-                        if( m_File.Read(H).isError(Error) ) return Error;
+                        if( auto Err = m_File.Read(H); Err ) 
+                            return Err;
+
                         Info.m_iData = align_to( m_iMemOffet, 2); m_iMemOffet = Info.m_iData + 2; reinterpret_cast<std::uint16_t&>(m_Memory[Info.m_iData]) = static_cast<std::uint16_t>(H);
                         Info.m_Width = 2;
                         break;
@@ -2317,7 +2358,9 @@ namespace xtextfile
                     case 'g':
                     {
                         std::uint32_t H;
-                        if( m_File.Read(H).isError(Error) ) return Error;
+                        if( auto Err = m_File.Read(H); Err ) 
+                            return Err;
+
                         Info.m_iData = align_to( m_iMemOffet, 4); m_iMemOffet = Info.m_iData + 4; reinterpret_cast<std::uint32_t&>(m_Memory[Info.m_iData]) = static_cast<std::uint32_t>(H);
                         Info.m_Width = 4;
                         break;
@@ -2327,7 +2370,9 @@ namespace xtextfile
                     case 'D':
                     {
                         std::uint64_t H;
-                        if( m_File.Read(H).isError(Error) ) return Error;
+                        if( auto Err = m_File.Read(H); Err ) 
+                            return Err;
+
                         Info.m_iData = align_to( m_iMemOffet, 8); m_iMemOffet = Info.m_iData + 8; reinterpret_cast<std::uint64_t&>(m_Memory[Info.m_iData]) = static_cast<std::uint64_t>(H);
                         Info.m_Width = 8;
                         break;
@@ -2338,7 +2383,9 @@ namespace xtextfile
                         Info.m_iData = m_iMemOffet;
                         do
                         {
-                            if( m_File.getC(c).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(c); Err ) 
+                                return Err;
+
                             m_Memory[m_iMemOffet++] = c;
                         } while(c); 
                         Info.m_Width = m_iMemOffet - Info.m_iData;
@@ -2351,7 +2398,8 @@ namespace xtextfile
                         m_iMemOffet = Info.m_iData;
                         do
                         {
-                            if (m_File.Read( c, 2, 1).isError(Error)) return Error;
+                            if (auto Err = m_File.Read( c, 2, 1); Err ) 
+                                return Err;
 
                             m_Memory[m_iMemOffet++] = (c >> 0) & 0xff;
                             m_Memory[m_iMemOffet++] = (c >> 8) & 0xff;
@@ -2362,7 +2410,7 @@ namespace xtextfile
                     }
                 }
 
-                return Error;
+                return {};
             };
 
             for( m_iColumn=0; m_iColumn<m_nColumns; ++m_iColumn )
@@ -2377,7 +2425,8 @@ namespace xtextfile
                     D.m_iField = 0;
 
                     // Get the first key code
-                    if( m_File.getC(c).isError(Error) ) return Error;
+                    if( auto Err = m_File.getC(c); Err ) 
+                        return Err;
 
                     // Read type information
                     if( c == ':' )
@@ -2385,7 +2434,9 @@ namespace xtextfile
                         D.m_nTypes = 0;
                         do 
                         {
-                            if( m_File.getC(c).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(c); Err ) 
+                                return Err;
+
                             D.m_SystemTypes[D.m_nTypes++] = c;
                         } while(c);
                         D.m_nTypes--;
@@ -2394,7 +2445,8 @@ namespace xtextfile
                     else if( c == ';' )
                     { 
                         std::uint8_t Index;
-                        if( m_File.Read(Index).isError(Error) ) return Error;
+                        if( auto Err = m_File.Read(Index); Err ) 
+                            return Err;
 
                         auto& UserType = m_UserTypes[Index];
                         D.m_UserType = UserType.m_CRC;
@@ -2411,7 +2463,8 @@ namespace xtextfile
                     //
                     for( int i=0; i<D.m_nTypes; i++ )
                     {
-                        if( ReadData( Column.m_FieldInfo.emplace_back(), D.m_SystemTypes[i] ).isError(Error) ) return Error;
+                        if( auto Err = ReadData( Column.m_FieldInfo.emplace_back(), D.m_SystemTypes[i] ); Err ) 
+                            return Err;
                     }
                 }
                 else
@@ -2424,14 +2477,16 @@ namespace xtextfile
                         auto& UserType = m_UserTypes[Column.m_FormatWidth];
                         for( int i=0; i<UserType.m_nSystemTypes; i++ )
                         {
-                            if( ReadData( Column.m_FieldInfo.emplace_back(), UserType.m_SystemTypes[i] ).isError(Error) ) return Error;
+                            if( auto Err = ReadData( Column.m_FieldInfo.emplace_back(), UserType.m_SystemTypes[i] ); Err) 
+                                return Err;
                         }
                     }
                     else
                     {
                         for( int i=0; i<Column.m_nTypes; i++ )
                         {
-                            if( ReadData( Column.m_FieldInfo.emplace_back(), Column.m_SystemTypes[i] ).isError(Error) ) return Error;
+                            if( auto Err = ReadData( Column.m_FieldInfo.emplace_back(), Column.m_SystemTypes[i] ); Err ) 
+                                return Err;
                         }
                     }
                 }
@@ -2442,24 +2497,26 @@ namespace xtextfile
             //
             // Okay now we must read a line worth of data
             //    
-            auto ReadComponent = [&]( details::field_info& Info, char SystemType ) noexcept
+            auto ReadComponent = [&]( details::field_info& Info, char SystemType ) noexcept ->xerr
             {
-                err Error;
-
                 if( c == ' ' )
-                    if( m_File.ReadWhiteSpace(c).isError( Error ) )
-                        return Error;
+                {
+                    if (auto Err = m_File.ReadWhiteSpace(c); Err)
+                        return Err;
+                }
 
                 Size = 0;
                 if ( c == '"' )
                 {
                     if( SystemType != 's' && SystemType != 'S')
-                        return err::create_f<"Unexpected string value expecting something else">();
+                        return xerr::create_f< state, "Unexpected string value expecting something else">();
 
                     Info.m_iData = m_iMemOffet;
                     do 
                     {
-                        if( m_File.getC(c).isError(Error) ) return Error;
+                        if( auto Err = m_File.getC(c); Err ) 
+                            return Err;
+
                         m_Memory[m_iMemOffet++] = c;
                     } while( c != '"' );
 
@@ -2471,15 +2528,21 @@ namespace xtextfile
 
                     if( c == '#' )
                     {
-                        if( m_File.getC(c).isError(Error) ) return Error;
+                        if( auto Err = m_File.getC(c); Err ) 
+                            return Err;
+
                         while(ishex(c) )
                         {
                             Buffer[Size++] = c;                    
-                            if( m_File.getC(c).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(c); Err ) 
+                                return Err;
                         }
 
                         if( Size == 0 )
-                            return err::create_f< "Fail to read a numeric value" >();
+                        {
+                            return xerr::create_f< state, "Fail to read a numeric value" >();
+                        }
+                            
 
                         Buffer[Size++] = 0;
 
@@ -2492,13 +2555,16 @@ namespace xtextfile
                         if( c == '-' )
                         {
                             Buffer[Size++] = c;                    
-                            if( m_File.getC(c).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(c); Err ) 
+                                return Err;
                         }
 
                         while( std::isdigit(c) ) 
                         {
                             Buffer[Size++] = c;                    
-                            if( m_File.getC(c).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(c); Err ) 
+                                return Err;
+
                             if( c == '.' )
                             {
                                 // Continue reading as a float
@@ -2506,7 +2572,8 @@ namespace xtextfile
                                 do 
                                 {
                                     Buffer[Size++] = c;                    
-                                    if( m_File.getC(c).isError(Error) ) return Error;
+                                    if( auto Err = m_File.getC(c); Err ) 
+                                        return Err;
                                     
                                 } while( std::isdigit(c) || c == 'e' || c == 'E' || c == '-' );
                                 break;
@@ -2514,7 +2581,7 @@ namespace xtextfile
                         }
 
                         if( Size == 0 )
-                            return err::create_f< "Fail to read a numeric value" >();
+                            return xerr::create_f< state, "Fail to read a numeric value" >();
 
                         Buffer[Size++] = 0;
 
@@ -2531,7 +2598,7 @@ namespace xtextfile
                         }
                         else if( isInt == false )
                         {
-                            return err::create< err::state::MISMATCH_TYPES, "I found a floating point number while trying to load an integer value" >();
+                            return xerr::create< state::MISMATCH_TYPES, "I found a floating point number while trying to load an integer value" >();
                         }
                         else if( Buffer[0] == '-' )
                         {
@@ -2560,7 +2627,7 @@ namespace xtextfile
                     }
 
                     if( c != ' ' && c != '\n' ) 
-                        return err::create_f< "Expecting a space separator but I got a different character" >();
+                        return xerr::create_f< state, "Expecting a space separator but I got a different character" >();
 
                     switch( SystemType )
                     {
@@ -2585,7 +2652,7 @@ namespace xtextfile
                     }
                 }
 
-                return Error;
+                return {};
             };
 
             for( m_iColumn=0; m_iColumn<m_nColumns; ++m_iColumn )
@@ -2593,14 +2660,14 @@ namespace xtextfile
                 auto& Column = m_Columns[m_iColumn];
 
                 // Read any white space
-                if( m_File.ReadWhiteSpace(c).isError( Error ) )
-                    return Error;
+                if( auto Err = m_File.ReadWhiteSpace(c); Err)
+                    return Err;
 
                 Column.m_FieldInfo.clear();
                 if( Column.m_nTypes == -1 )
                 {
                     if( c != ':'  && c != ';' )
-                        return err::create_f< "Expecting a type definition" >();
+                        return xerr::create_f< state, "Expecting a type definition" >();
 
                     Column.m_DynamicFields.clear();
                     auto& D = Column.m_DynamicFields.emplace_back();
@@ -2611,7 +2678,9 @@ namespace xtextfile
                         int x;
                         do 
                         {
-                            if( m_File.getC(x).isError(Error) ) return Error;
+                            if( auto Err = m_File.getC(x); Err ) 
+                                return Err;
+
                             Buffer[Size++] = x;
                         } while( std::isspace(x) == false );
 
@@ -2623,7 +2692,7 @@ namespace xtextfile
                         D.m_UserType = crc32::computeFromString( Buffer.data() );
                         auto p = getUserType( D.m_UserType );
                         if( p == nullptr )
-                            return err::create_f< "Fail to find the user type for a column" >();
+                            return xerr::create_f< state, "Fail to find the user type for a column" >();
 
                         D.m_nTypes = p->m_nSystemTypes;
                         strcpy_s( D.m_SystemTypes.data(), D.m_SystemTypes.size(), p->m_SystemTypes.data());
@@ -2633,7 +2702,7 @@ namespace xtextfile
                         assert(c ==':');
                         D.m_nTypes = Strcpy_s( D.m_SystemTypes.data(), D.m_SystemTypes.size(), Buffer.data());
                         if( D.m_nTypes <= 0 )
-                            return err::create_f< "Fail to read a column, type. not system types specified" >();
+                            return xerr::create_f< state, "Fail to read a column, type. not system types specified" >();
 
                         // Remove the null termination count
                         D.m_nTypes--;
@@ -2644,8 +2713,8 @@ namespace xtextfile
                     for( int n=0; n<D.m_nTypes ;n++ )
                     {
                         auto& Field = Column.m_FieldInfo.emplace_back();
-                        if( ReadComponent( Field, D.m_SystemTypes[n] ).isError(Error) )
-                            return Error;
+                        if( auto Err = ReadComponent( Field, D.m_SystemTypes[n] ); Err )
+                            return Err;
                     }
                 }
                 else
@@ -2653,8 +2722,8 @@ namespace xtextfile
                     for( int n=0; n<Column.m_nTypes ;n++ )
                     {
                         auto& Field = Column.m_FieldInfo.emplace_back();
-                        if( ReadComponent( Field, Column.m_SystemTypes[n] ).isError(Error) )
-                            return Error;
+                        if( auto Err = ReadComponent( Field, Column.m_SystemTypes[n] ); Err )
+                            return Err;
                     }
                 }
             }
@@ -2668,7 +2737,7 @@ namespace xtextfile
         m_iColumn   = 0;
         m_iMemOffet = 0;
 
-        return Error;
+        return {};
     }
 
 //------------------------------------------------------------------------------
@@ -2679,9 +2748,8 @@ namespace xtextfile
     //      The next most common thing to do is to get how many rows to read. This is done by calling
     //      GetRecordCount. After that you will look throw n times reading first a line and then the fields.
     //------------------------------------------------------------------------------
-    err stream::ReadRecord( void ) noexcept
+    xerr stream::ReadRecord( void ) noexcept
     {
-        err   Failure;
         int   c;
 
         assert( m_File.m_States.m_isReading );
@@ -2692,7 +2760,8 @@ namespace xtextfile
             // If it is the end of the file we are done
             do 
             {
-                if( m_File.getC(c).isError(Failure) ) return Failure;
+                if( auto Err = m_File.getC(c); Err ) 
+                    return Err;
 
             } while( c != '@' && c != '[' && c != '<');
         
@@ -2706,7 +2775,9 @@ namespace xtextfile
                 int i;
 
                 // Read the first character of the user type
-                if( m_File.getC(c).isError(Failure) ) return Failure;
+                if( auto Err = m_File.getC(c); Err ) 
+                    return Err;
+
                 if( c == '[' ) break;
 
                 // Read the user_types err
@@ -2714,7 +2785,9 @@ namespace xtextfile
                 UserType[i++] = c;
                 while( c ) 
                 {
-                    if( m_File.getC(c).isError(Failure) ) return Failure;
+                    if( auto Err = m_File.getC(c); Err ) 
+                        return Err;
+
                     UserType[i++] = c;
                 }
 
@@ -2724,7 +2797,9 @@ namespace xtextfile
                 i=0;
                 do 
                 {
-                    if( m_File.getC(c).isError(Failure) ) return Failure;
+                    if( auto Err = m_File.getC(c); Err) 
+                        return Err;
+
                     if( c == 0 ) break;
                     SystemType[i++] = c;
                 } while( true );
@@ -2746,7 +2821,9 @@ namespace xtextfile
             //
             if( c == '@' ) 
             {
-                if (m_File.getC(c).isError(Failure)) return Failure;
+                if ( auto Err = m_File.getC(c); Err ) 
+                    return Err;
+
                 m_Record.m_bLabel = true;
             }
             else
@@ -2754,33 +2831,40 @@ namespace xtextfile
                 m_Record.m_bLabel = false;
             }
 
-            if( c != '[' ) return err::create_f< "Unexpected character while reading the binary file." >();
+            if( c != '[' ) return xerr::create_f< state, "Unexpected character while reading the binary file." >();
 
             // Read the record name
             {
                 std::size_t NameSize=0;
                 do 
                 {
-                    if( m_File.getC(c).isError(Failure) ) return Failure;
-                    if( NameSize >= static_cast<std::size_t>(m_Record.m_Name.size()) ) return err::create_f< "A record name was way too long, fail to read the file." >();
+                    if( auto Err = m_File.getC(c); Err ) 
+                        return Err;
+
+                    if( NameSize >= static_cast<std::size_t>(m_Record.m_Name.size()) ) 
+                        return xerr::create_f< state, "A record name was way too long, fail to read the file." >();
+
                     m_Record.m_Name[NameSize++] = c;
                 } while (c);
             }
 
             // Read the record count
-            if( m_File.Read( m_Record.m_Count ).isError(Failure) ) return Failure;
+            if( auto Err = m_File.Read( m_Record.m_Count ); Err ) 
+                return Err;
         }
         else
         {
-            scope_end_callback CleanUp([&]
+            xerr Error;
+            xerr::cleanup CleanUp(Error, [&]
             {
-                if (Failure) m_Record.m_Name[0u]=0;
+                m_Record.m_Name[0u]=0;
             });
 
             //
             // Skip blank spaces and comments
             //
-            if( m_File.ReadWhiteSpace( c ).isError(Failure) ) return Failure;
+            if( Error = m_File.ReadWhiteSpace( c ); Error ) 
+                return Error;
 
             //
             // Deal with user_types types
@@ -2790,7 +2874,8 @@ namespace xtextfile
             if( c == '<' )
             {
                 // Read any white space
-                if( m_File.ReadWhiteSpace( c ).isError(Failure) ) return Failure;
+                if( Error = m_File.ReadWhiteSpace( c ); Error ) 
+                    return Error;
 
                 do
                 {
@@ -2801,8 +2886,10 @@ namespace xtextfile
                     while( c != ':' ) 
                     {
                         UserType.m_Name[UserType.m_NameLength++] = static_cast<char>(c);
-                        if( m_File.getC(c).isError(Failure) ) return Failure;
-                        if( UserType.m_NameLength >= static_cast<int>(UserType.m_Name.size()) ) return err::create_f< "Failed to find the termination character ':' for a user type" >();
+                        if( Error = m_File.getC(c); Error ) 
+                            return Error;
+
+                        if( UserType.m_NameLength >= static_cast<int>(UserType.m_Name.size()) ) return Error = xerr::create_f< state, "Failed to find the termination character ':' for a user type" >();
                     }
                     UserType.m_Name[UserType.m_NameLength]=0;
                     UserType.m_CRC = crc32::computeFromString(UserType.m_Name.data());
@@ -2810,11 +2897,15 @@ namespace xtextfile
                     UserType.m_nSystemTypes=0;
                     do 
                     {
-                        if( m_File.getC(c).isError(Failure) ) return Failure;
+                        if( Error = m_File.getC(c); Error ) 
+                            return Error;
+
                         if( c == '>' || c == ' ' ) break;
-                        if( isValidType(c) == false ) return err::create_f< "Found a non-atomic type in user type definition" >();
+                        if( isValidType(c) == false ) return Error = xerr::create_f< state, "Found a non-atomic type in user type definition" >();
+
                         UserType.m_SystemTypes[UserType.m_nSystemTypes++] = static_cast<char>(c);
-                        if( UserType.m_nSystemTypes >= static_cast<int>(UserType.m_SystemTypes.size()) ) return err::create_f< "Failed to find the termination character '>' for a user type block" >();
+                        if( UserType.m_nSystemTypes >= static_cast<int>(UserType.m_SystemTypes.size()) ) return Error = xerr::create_f< state, "Failed to find the termination character '>' for a user type block" >();
+
                     } while( true );
                     UserType.m_SystemTypes[UserType.m_nSystemTypes]=0;
 
@@ -2825,14 +2916,18 @@ namespace xtextfile
 
                     // Read any white space
                     if( std::isspace(c) )
-                        if( m_File.ReadWhiteSpace( c ).isError(Failure) ) return Failure;
+                    {
+                        if (Error = m_File.ReadWhiteSpace(c); Error) return Error;
+                    }
+                        
 
                 } while( c != '>' );
 
                 //
                 // Skip spaces
                 //
-                if ( m_File.ReadWhiteSpace( c ).isError(Failure) ) return Failure;
+                if ( Error = m_File.ReadWhiteSpace( c ); Error ) 
+                    return Error;
             }
         
             //
@@ -2840,7 +2935,8 @@ namespace xtextfile
             //
             if (c == '@')
             {
-                if (m_File.getC(c).isError(Failure)) return Failure;
+                if ( Error = m_File.getC(c); Error ) 
+                    return Error;
                 m_Record.m_bLabel = true;
             }
             else
@@ -2852,17 +2948,19 @@ namespace xtextfile
             // Make sure that we are dealing with a header now
             //
             if( c != '[' ) 
-                return err::create_f< "Unable to find the right header symbol '['" >();
+                return Error = xerr::create_f< state, "Unable to find the right header symbol '['" >();
 
             // Skip spaces
-            if( m_File.ReadWhiteSpace(c).isError(Failure) ) return Failure;
+            if( Error = m_File.ReadWhiteSpace(c); Error ) 
+                return Error;
 
             int                         NameSize = 0;
             do
             {
                 m_Record.m_Name[NameSize++] = c;
             
-                if( m_File.getC(c).isError(Failure) ) return Failure;
+                if( Error = m_File.getC(c); Error ) 
+                    return Error;
 
             } while( std::isspace( c ) == false && c != ':' && c != ']' );
 
@@ -2871,7 +2969,11 @@ namespace xtextfile
 
             // Skip spaces
             if( std::isspace( c ) )
-                if( m_File.ReadWhiteSpace(c).isError(Failure) ) return Failure;
+            {
+                if ( Error = m_File.ReadWhiteSpace(c); Error ) 
+                    return Error;
+            }
+                
         
             //
             // Read the record count number 
@@ -2890,7 +2992,8 @@ namespace xtextfile
                 // skip spaces and zeros
                 do
                 {
-                    if( m_File.ReadWhiteSpace(c).isError(Failure) ) return Failure;
+                    if( Error = m_File.ReadWhiteSpace(c); Error )   
+                        return Error;
                 
                 } while( c == '0' );
             
@@ -2900,10 +3003,12 @@ namespace xtextfile
                 if( c == '?' )
                 {
                    // TODO: Handle the special reader
-                   if( m_File.HandleDynamicTable( m_Record.m_Count ).isError(Failure) ) return Failure;
+                   if( Error = m_File.HandleDynamicTable( m_Record.m_Count ); Error ) 
+                    return Error;
                 
                     // Read next character
-                   if( m_File.getC(c).isError(Failure) ) return Failure;
+                   if( Error = m_File.getC(c); Error ) 
+                    return Error;
                 }
                 else
                 {
@@ -2911,20 +3016,25 @@ namespace xtextfile
                     while( c >= '0' && c <= '9' )
                     {
                         m_Record.m_Count = m_Record.m_Count * 10 + (c-'0');
-                       if( m_File.getC(c).isError(Failure) ) return Failure;
+                       if( Error = m_File.getC(c); Error ) 
+                        return Error;
                     }
                 }
 
                 // Skip spaces
                 if( std::isspace( c ) )
-                    if( m_File.ReadWhiteSpace(c).isError(Failure) ) return Failure;
+                {
+                    if ( Error = m_File.ReadWhiteSpace(c); Error ) 
+                        return Error;
+                }
+                    
             }
 
             //
             // Make sure that we are going to conclude the field correctly
             //
             if( c != ']' )
-                return err::create_f< "Fail reading the file. Expecting a '[' but didn't find it." >();
+                return Error = xerr::create_f< state, "Fail reading the file. Expecting a '[' but didn't find it." >();
         }
 
         //

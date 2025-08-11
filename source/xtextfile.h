@@ -12,6 +12,8 @@
 #include <codecvt>
 #include <variant>
 
+#include "source/xerr.h"
+
 namespace xtextfile
 {
     struct crc32
@@ -115,117 +117,23 @@ namespace std
 //-----------------------------------------------------------------------------------------------------
 namespace xtextfile
 {
-    //-----------------------------------------------------------------------------------------------------
+    //
     // Error and such
-    //-----------------------------------------------------------------------------------------------------
-    struct err
-    {
-        enum class state : std::uint8_t
-        { OK                        = 0
-        , FAILURE
-        , FILE_NOT_FOUND
-        , UNEXPECTED_EOF
-        , READ_TYPES_DONTMATCH
-        , MISMATCH_TYPES
-        , FIELD_NOT_FOUND
-        , UNEXPECTED_RECORD
-        };
-
-        constexpr operator bool () const noexcept
-        {
-            return !!m_pMessage;
-        }
-
-        constexpr state getState() const noexcept
-        {
-            return m_pMessage ? static_cast<state>(m_pMessage[-1]) : state::OK;
-        }
-
-        inline void clear() noexcept
-        {
-            m_pMessage =  nullptr;
-        }
-
-        constexpr bool isError( err& Error ) const noexcept
-        {
-            const bool is = !!m_pMessage;
-            if (is) Error = *this;
-            return is;
-        }
-
-        template<std::size_t N>
-        struct string_literal
-        {
-            std::array<char, N> m_Value;
-            consteval string_literal(const char(&str)[N]) noexcept
-            { 
-                for (std::size_t i = 0; i < N; ++i)
-                    m_Value[i] = str[i];
-            }
-        };
-
-        template <string_literal T_STR_V, state T_STATE_V>
-        inline constexpr static auto data_v = []() constexpr noexcept
-        {
-            std::array< char, T_STR_V.m_Value.size() + 1> temp = {};
-            temp[0] = static_cast<char>(T_STATE_V);
-            for (std::size_t i = 1; i < T_STR_V.m_Value.size(); ++i)
-                temp[i] = T_STR_V.m_Value[i-1];
-            return temp;
-        }();
-
-        constexpr err() = default;
-        constexpr err( const char* p ) noexcept : m_pMessage{p} {}
-
-        template <state T_STATE_V, string_literal T_STR_V>
-        consteval static err create() noexcept
-        {
-            return err::data_v<T_STR_V, T_STATE_V>.data() + 1;
-        }
-
-        template <string_literal T_STR_V>
-        consteval static err create_f() noexcept
-        {
-            return err::data_v<T_STR_V, err::state::FAILURE>.data() + 1;
-        }
-
-        const char*       m_pMessage = nullptr;
+    //
+    enum class state : std::uint8_t
+    { OK = 0
+    , FAILURE
+    , FILE_NOT_FOUND
+    , UNEXPECTED_EOF
+    , READ_TYPES_DONTMATCH
+    , MISMATCH_TYPES
+    , FIELD_NOT_FOUND
+    , UNEXPECTED_RECORD
     };
 
-    struct err2 : err
-    {
-        err2() = default;
-        constexpr err2(err&& E) : err{ E } {}
-        err2(state State, std::string&& Message ) noexcept
-            : m_MessageFull{std::move(Message)}
-        {
-            assert(Message[0] == '#');
-            m_MessageFull[0] = static_cast<char>(State);
-            m_pMessage       = m_MessageFull.c_str();
-        }
-
-        err2(state State, std::wstring&& Message) noexcept
-        {
-            // Ensure locale is set for UTF-8 conversion
-            std::setlocale(LC_ALL, "en_US.UTF-8");
-
-            const size_t max_bytes = Message.size() * 4 + 1;
-            std::vector<char> buffer(max_bytes);
-            size_t ret;
-            errno_t err = wcstombs_s(&ret, buffer.data(), max_bytes, Message.c_str(), _TRUNCATE);
-            if (err != 0) 
-            {
-                assert(false);
-            }
-
-            m_MessageFull = std::string{ buffer.data(), ret};
-            m_MessageFull[0] = static_cast<char>(State);
-            m_pMessage = m_MessageFull.c_str() + 1;
-        }
-
-        std::string m_MessageFull;
-    };
-
+    //
+    // Tell which type binary or text...
+    //
     enum class file_type
     { TEXT
     , BINARY
@@ -285,21 +193,21 @@ namespace xtextfile
                            ~file                ( void )                                                                    noexcept;
 
             file&           setup               ( std::FILE& File, states States )                                          noexcept;
-            err2            openForReading      ( const std::wstring_view FilePath, bool isBinary )                         noexcept;
-            err2            openForWriting      ( const std::wstring_view FilePath, bool isBinary )                         noexcept;
+            xerr            openForReading      ( const std::wstring_view FilePath, bool isBinary )                         noexcept;
+            xerr            openForWriting      ( const std::wstring_view FilePath, bool isBinary )                         noexcept;
             void            close               ( void )                                                                    noexcept;
-            err             ReadingErrorCheck   ( void )                                                                    noexcept;
+            xerr            ReadingErrorCheck   ( void )                                                                    noexcept;
             template< typename T >
-            err             Read                ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
-            err             getC                ( int& c )                                                                  noexcept;
-            err             WriteStr            ( std::string_view Buffer )                                                 noexcept;
-            err             WriteFmtStr         ( const char* pFmt, ... )                                                   noexcept;
+            xerr            Read                ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
+            xerr            getC                ( int& c )                                                                  noexcept;
+            xerr            WriteStr            ( std::string_view Buffer )                                                 noexcept;
+            xerr            WriteFmtStr         ( const char* pFmt, ... )                                                   noexcept;
             template< typename T >
-            err             Write               ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
-            err             WriteChar           ( char C, int Count = 1 )                                                   noexcept;
-            err             WriteData           ( std::string_view Buffer )                                                 noexcept;
-            err             ReadWhiteSpace      ( int& c )                                                                  noexcept;
-            err             HandleDynamicTable  ( int& Count )                                                              noexcept;
+            xerr            Write               ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
+            xerr            WriteChar           ( char C, int Count = 1 )                                                   noexcept;
+            xerr            WriteData           ( std::string_view Buffer )                                                 noexcept;
+            xerr            ReadWhiteSpace      ( int& c )                                                                  noexcept;
+            xerr            HandleDynamicTable  ( int& Count )                                                              noexcept;
             int             Tell                ()                                                                          noexcept;
         };
 
@@ -369,34 +277,30 @@ namespace xtextfile
 
         constexpr                       stream              ( void )                                                                    noexcept = default;
         void                            close               ( void )                                                                    noexcept;
-                        err2            Open                ( bool isRead, std::wstring_view View, file_type FileType, flags Flags={} ) noexcept;
+                        xerr            Open                ( bool isRead, std::wstring_view View, file_type FileType, flags Flags={} ) noexcept;
 
                         template< std::size_t N, typename... T_ARGS >
-        inline          err             Field               ( crc32 UserType, const char(&pFieldName)[N], T_ARGS&... Args )    noexcept;
+        inline          xerr            Field               ( crc32 UserType, const char(&pFieldName)[N], T_ARGS&... Args )    noexcept;
 
-                        err             ReadFieldUserType   ( crc32& UserType, const char* pFieldName )                        noexcept;
+                        xerr            ReadFieldUserType   ( crc32& UserType, const char* pFieldName )                        noexcept;
 
                         template< std::size_t N, typename... T_ARGS >
-        inline          err             Field               ( const char(&pFieldName)[N], T_ARGS&... Args )                             noexcept;
+        inline          xerr            Field               ( const char(&pFieldName)[N], T_ARGS&... Args )                             noexcept;
 
         inline          const auto*     getUserType         ( crc32 UserType )                                         const   noexcept { if( auto I = m_UserTypeMap.find(UserType); I == m_UserTypeMap.end() ) return (details::user_types*)nullptr; else return &m_UserTypes[I->second]; }
 
                         template< std::size_t N, typename TT, typename T >
-        inline          bool            Record              ( err& Error, const char (&Str)[N]
-                                                                , TT&& RecordStar, T&& Callback )                                       noexcept;
-
-                        template< std::size_t N, typename TT, typename T >
-        inline          err             Record              ( const char (&Str)[N]
+        inline          xerr            Record              ( const char (&Str)[N]
                                                                 , TT&& RecordStar, T&& Callback )                                       noexcept;
 
                         template< std::size_t N, typename T >
-        inline          bool            Record              ( err& Error, const char (&Str)[N]
+        inline          xerr            Record              ( const char (&Str)[N]
                                                                 , T&& Callback )                                                        noexcept;
 
                         template< std::size_t N >
-        inline          err             RecordLabel         ( const char(&Str)[N] )                                                     noexcept;
+        inline          xerr            RecordLabel         ( const char(&Str)[N] )                                                     noexcept;
 
-                        err             WriteComment        ( const std::string_view Comment )                                  noexcept;
+                        xerr            WriteComment        ( const std::string_view Comment )                                  noexcept;
 
 
         constexpr       bool            isReading           ( void )                                                            const   noexcept { return m_File.m_States.m_isReading; }
@@ -412,35 +316,35 @@ namespace xtextfile
     protected:
 
                         stream&         setup               ( std::FILE& File, details::states States )                                 noexcept;
-                        err2            openForReading      ( const std::wstring_view FilePath )                                        noexcept;
-                        err2            openForWriting      ( const std::wstring_view FilePath
+                        xerr            openForReading      ( const std::wstring_view FilePath )                                        noexcept;
+                        xerr            openForWriting      ( const std::wstring_view FilePath
                                                                 , file_type FileType, flags Flags )                                     noexcept;
                         bool            isValidType         ( int Type )                                                        const   noexcept;
                         template< typename T >
-                        err             Read                ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
-                        err             ReadRecord          ( void )                                                                    noexcept;
-                        err             ReadingErrorCheck   ( void )                                                                    noexcept;
-                        err             ReadWhiteSpace      ( int& c )                                                                  noexcept;
-                        err             ReadLine            ( void )                                                                    noexcept;
-                        err             getC                ( int& c )                                                                  noexcept;
-                        err             ReadColumn          ( crc32 UserType, const char* pFieldName, std::span<details::arglist::types> Args )  noexcept;
-                        err             ReadFieldUserType   ( const char* pFieldName )                                                  noexcept;
+                        xerr            Read                ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
+                        xerr            ReadRecord          ( void )                                                                    noexcept;
+                        xerr            ReadingErrorCheck   ( void )                                                                    noexcept;
+                        xerr            ReadWhiteSpace      ( int& c )                                                                  noexcept;
+                        xerr            ReadLine            ( void )                                                                    noexcept;
+                        xerr            getC                ( int& c )                                                                  noexcept;
+                        xerr            ReadColumn          ( crc32 UserType, const char* pFieldName, std::span<details::arglist::types> Args )  noexcept;
+                        xerr            ReadFieldUserType   ( const char* pFieldName )                                                  noexcept;
 
                         template< typename T >
-                        err             Write               ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
-                        err             WriteLine           ( void )                                                                    noexcept;
-                        err             WriteStr            ( std::string_view Buffer )                                                 noexcept;
-                        err             WriteFmtStr         ( const char* pFmt, ... )                                                   noexcept;
-                        err             WriteChar           ( char C, int Count = 1 )                                                   noexcept;
-                        err             WriteColumn         ( crc32 UserType, const char* pFieldName, std::span<details::arglist::types> Args )  noexcept;
-                        err             WriteUserTypes      ( void )                                                                    noexcept;
+                        xerr            Write               ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
+                        xerr            WriteLine           ( void )                                                                    noexcept;
+                        xerr            WriteStr            ( std::string_view Buffer )                                                 noexcept;
+                        xerr            WriteFmtStr         ( const char* pFmt, ... )                                                   noexcept;
+                        xerr            WriteChar           ( char C, int Count = 1 )                                                   noexcept;
+                        xerr            WriteColumn         ( crc32 UserType, const char* pFieldName, std::span<details::arglist::types> Args )  noexcept;
+                        xerr            WriteUserTypes      ( void )                                                                    noexcept;
 
-                        err             HandleDynamicTable  ( int& Count )                                                              noexcept;
+                        xerr            HandleDynamicTable  ( int& Count )                                                              noexcept;
 
-                        err             WriteRecord         ( const char* pHeaderName, std::size_t Count )                              noexcept;
+                        xerr            WriteRecord         ( const char* pHeaderName, std::size_t Count )                              noexcept;
 
         inline          bool            ValidateColumnChar  ( int c )                                                           const   noexcept;
-                        err             BuildTypeInformation( const char* pFieldName )                                                  noexcept;
+                        xerr            BuildTypeInformation( const char* pFieldName )                                                  noexcept;
 
 
     protected:

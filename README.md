@@ -17,10 +17,16 @@ This reduces maintenance and keeps your code clean.
 * **Strict Typing** - Data is always well-typed, so no ambiguity
 * **Binary Serialization with No Code Changes** - Easily switch between text and binary modes.
 * **Easy Integration** - Just include the .cpp and .h in your project and you are done.
-* **No Dependencies** - Zero external dependencies. Easy to integrate into any project.
 * **MIT License** - Open-source, simple, and permissive license.
 * **Documentation and Tests Included** - Full [documentation](https://github.com/LIONant-depot/xtextfile/blob/main/documentation/documentation.md) and unit tests that double as examples.
 * **Unicode strings** - Use regular ascii files while still using unicode, great for performance and memory savings.
+
+## Dependencies
+
+Run the ```build/updateDependencies.bat``` To get all the dependencies. (Only one dependency)
+
+* [xerr](https://github.com/LIONant-depot/xerr) To deal with errors
+
 ## Code Example
 
 ```cpp
@@ -34,17 +40,20 @@ struct data
 std::vector<data> list;
 xtextfile::stream file;
 
-file.Open(false, L"data.bin", xtextfile::file_type::BINARY);
+if( auto Err = file.Open(false, L"data.bin", xtextfile::file_type::BINARY); Err)
+    return Err;
 
-file.Record(err, "MyList",
+if( auto Err = file.Record(Error, "MyList",
     [&](std::size_t& count, xtextfile::err&) {
         if (s.isReading()) list.resize(count);
         else               count = list.size();
     },
     [&](std::size_t index, xtextfile::err& e) {
-        s.Field("String", list[index].str);
-        s.Field("Floats", list[index].d, list[index].f);
-    });
+        true // This way to format the reads/writes simplifies error handling 
+        || (e = s.Field("String", list[index].str))
+        || (e = s.Field("Floats", list[index].d, list[index].f))
+        ;
+    }); Err ) return Err;
 ```
 
 ## Format Example

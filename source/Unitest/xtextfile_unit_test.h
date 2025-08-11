@@ -1,4 +1,5 @@
 #include <format>
+#include <iostream>
 
 namespace xtextfile::unit_test
 {
@@ -43,7 +44,7 @@ namespace xtextfile::unit_test
     // Test different types
     //------------------------------------------------------------------------------
     inline
-    xtextfile::err AllTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
+    xerr AllTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
         std::array<std::string, 3>  String      = {  StringBack[0],  StringBack[1],  StringBack[2] };
         std::array<std::wstring, 3> WString     = { WStringBack[0], WStringBack[1], WStringBack[2] };
@@ -61,40 +62,39 @@ namespace xtextfile::unit_test
         auto                        UInt16      = UInt16Back;
         auto                        UInt8       = UInt8Back;
 
-        xtextfile::err              Error;
-
-        if (TextFile.WriteComment(
+        if (auto Err = TextFile.WriteComment(
             "----------------------------------------------------\n"
             " Example that shows how to use all system types\n"
             "----------------------------------------------------\n"
-        ).isError(Error)) return Error;
+        ); Err) return Err;
 
         //
         // Save/Load a record
         //
-        int Times = 128;
-        if (TextFile.Record(Error, "TestTypes"
-            , [&](std::size_t& C, xtextfile::err&)
+        int     Times = 128;
+
+        if (xerr Err = TextFile.Record( "TestTypes"
+            , [&](std::size_t& C, xerr&)
             {
                 if (isRead)    assert(C == StringBack.size() * Times);
                 else            C = StringBack.size() * Times;
             }
-            , [&](std::size_t c, xtextfile::err& Error)
+            , [&](std::size_t c, xerr& Error)
             {
                 const auto i = c % StringBack.size();
-                0
-                    || TextFile.Field("String", String[i]).isError(Error)
-                    || TextFile.Field("WString", WString[i]).isError(Error)
-                    || TextFile.Field("Floats", Floats64[i]
-                                              , Floats32[i]).isError(Error)
-                    || TextFile.Field("Ints", Int64[i]
-                                            , Int32[i]
-                                            , Int16[i]
-                                            , Int8[i]).isError(Error)
-                    || TextFile.Field("UInts", UInt64[i]
-                                             , UInt32[i]
-                                             , UInt16[i]
-                                             , UInt8[i]).isError(Error)
+                    0
+                    || (Error = TextFile.Field("String" , String[i]))
+                    || (Error = TextFile.Field("WString", WString[i]))
+                    || (Error = TextFile.Field("Floats" , Floats64[i]
+                                                        , Floats32[i]))
+                    || (Error = TextFile.Field("Ints"   , Int64[i]
+                                                        , Int32[i]
+                                                        , Int16[i]
+                                                        , Int8[i]))
+                    || (Error = TextFile.Field("UInts"  , UInt64[i]
+                                                        , UInt32[i]
+                                                        , UInt16[i]
+                                                        , UInt8[i]))
                     ;
 
 
@@ -132,16 +132,16 @@ namespace xtextfile::unit_test
                     assert(UInt8Back[i]  == UInt8[i]);
                 }
             }
-        )) return Error;
+        ); Err ) return Err;
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
     // Test different types
     //------------------------------------------------------------------------------
     inline
-        xtextfile::err SimpleVariableTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
+    xerr SimpleVariableTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
         std::array<std::string, 3>      String      = {  StringBack[0],  StringBack[1],  StringBack[2] };
         std::array<std::wstring, 3>     WString     = { WStringBack[0], WStringBack[1], WStringBack[2] };
@@ -159,44 +159,42 @@ namespace xtextfile::unit_test
         auto                            UInt16      = UInt16Back;
         auto                            UInt8       = UInt8Back;
 
-        xtextfile::err                  Error;
-
-        if (TextFile.WriteComment(
+        if ( auto Err = TextFile.WriteComment(
             "----------------------------------------------------\n"
             " Example that shows how to use per line (rather than per column) types\n"
             "----------------------------------------------------\n"
-        ).isError(Error)) return Error;
+        ); Err ) return Err;
 
         //
         // Save/Load record
         //
         int Times = 128;
-        if (TextFile.Record(Error, "VariableTypes"
-            , [&](std::size_t& C, xtextfile::err&)
+        if (auto Err = TextFile.Record( "VariableTypes"
+            , [&](std::size_t& C, xerr&)
             {
                 if (isRead) assert(C == StringBack.size() * Times);
                 else        C = StringBack.size() * Times;
             }
-            , [&](std::size_t i, xtextfile::err& Error)
+            , [&](std::size_t i, xerr& Error)
             {
                 i %= StringBack.size();
 
                 // Just save some integers to show that we can still safe normal fields at any point
-                if (TextFile.Field("Ints", Int32[i]).isError(Error)) return;
+                if (Error = TextFile.Field("Ints", Int32[i]); Error ) return;
 
                 // Here we are going to save different types and give meaning to 'type' from above
                 // so in a way here we are saving two columns first the "type:<?>" then the "value<type>"
                 // the (i&1) shows that we can choose whatever types we want
                 switch (i)
                 {
-                case 0: if (TextFile.Field("value:?", String[0]).isError(Error)) return; break;
-                case 1: if (TextFile.Field("value:?", WString[0]).isError(Error)) return; break;
-                case 2: if (TextFile.Field("value:?", Floats64[0],  Floats32[0]).isError(Error)) return; break;
-                case 3: if (TextFile.Field("value:?", Int64[0],     Int32[0],   Int16[0],   Int8[0]).isError(Error)) return; break;
-                case 4: if (TextFile.Field("value:?", UInt64[0],    UInt32[0],  UInt16[0],  UInt8[0]).isError(Error)) return; break;
+                case 0: if (Error = TextFile.Field("value:?", String[0]); Error) return; break;
+                case 1: if (Error = TextFile.Field("value:?", WString[0]); Error) return; break;
+                case 2: if (Error = TextFile.Field("value:?", Floats64[0],  Floats32[0]); Error) return; break;
+                case 3: if (Error = TextFile.Field("value:?", Int64[0],     Int32[0],   Int16[0],   Int8[0]); Error ) return; break;
+                case 4: if (Error = TextFile.Field("value:?", UInt64[0],    UInt32[0],  UInt16[0],  UInt8[0]); Error ) return; break;
                 }
             }
-        )) return Error;
+        ); Err ) return Err;
 
         //
         // Sanity check
@@ -229,16 +227,15 @@ namespace xtextfile::unit_test
             assert(UInt8Back[0] == UInt8[0]);
         }
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
     // Property examples
     //------------------------------------------------------------------------------
     inline
-    xtextfile::err Properties(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
+    xerr Properties(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
-        xtextfile::err                          Error;
         std::array<std::string, 3>              String{ StringBack[0], StringBack[1], StringBack[2] };
         std::array<std::wstring, 3>             WString{ WStringBack[0], WStringBack[1], WStringBack[2] };
         std::string                             Name{ "Hello" };
@@ -255,22 +252,22 @@ namespace xtextfile::unit_test
         //
         // Save/Load a record
         //
-        if (TextFile.Record(Error, "Properties"
-            , [&](std::size_t& C, xtextfile::err&)
+        if (auto Err = TextFile.Record( "Properties"
+            , [&](std::size_t& C, xerr&)
             {
                 if (isRead) assert(C == 3);
                 else        C = 3;
             }
-            , [&](std::size_t i, xtextfile::err& Error)
+            , [&](std::size_t i, xerr& Error)
             {
                 // Just save some integers to show that we can still safe normal fields at any point
-                if (TextFile.Field("Name", String[i]).isError(Error)) return;
+                if (Error = TextFile.Field("Name", String[i]); Error ) return;
 
                 // Handle the data
                 xtextfile::crc32 Type;
                 if (isRead)
                 {
-                    if (TextFile.ReadFieldUserType(Type, "Value:?").isError(Error)) return;
+                    if (Error = TextFile.ReadFieldUserType(Type, "Value:?"); Error ) return;
                 }
                 else
                 {
@@ -280,25 +277,23 @@ namespace xtextfile::unit_test
 
                 switch (Type.m_Value)
                 {
-                case xtextfile::crc32::computeFromString("V3").m_Value:      if (TextFile.Field(Type, "Value:?", Position[0], Position[1], Position[2]).isError(Error)) return; break;
-                case xtextfile::crc32::computeFromString("BOOL").m_Value:    if (TextFile.Field(Type, "Value:?", isValid).isError(Error)) return; break;
-                case xtextfile::crc32::computeFromString("STRING").m_Value:  if (TextFile.Field(Type, "Value:?", Name).isError(Error)) return; break;
-                case xtextfile::crc32::computeFromString("WSTRING").m_Value: if (TextFile.Field(Type, "Value:?", WName).isError(Error)) return; break;
-                }
+                case xtextfile::crc32::computeFromString("V3").m_Value:      if (Error = TextFile.Field(Type, "Value:?", Position[0], Position[1], Position[2]); Error ) return; break;
+                case xtextfile::crc32::computeFromString("BOOL").m_Value:    if (Error = TextFile.Field(Type, "Value:?", isValid); Error) return; break;
+                case xtextfile::crc32::computeFromString("STRING").m_Value:  if (Error = TextFile.Field(Type, "Value:?", Name); Error) return; break;
+                case xtextfile::crc32::computeFromString("WSTRING").m_Value: if (Error = TextFile.Field(Type, "Value:?", WName); Error) return; break;
+                }                                                               
             }
-        )) return Error;
+        ); Err ) return Err;
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
     // Test different types
     //------------------------------------------------------------------------------
     inline
-    xtextfile::err UserTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
+    xerr UserTypes(xtextfile::stream& TextFile, const bool isRead, const xtextfile::flags Flags) noexcept
     {
-        xtextfile::err                    Error;
-
         constexpr xtextfile::user_defined_types v3  { "V3",     "fff" };
         constexpr xtextfile::user_defined_types bo  { "BOOL",   "c" };
         constexpr xtextfile::user_defined_types str { "STRING", "s" };
@@ -309,11 +304,11 @@ namespace xtextfile::unit_test
         bool            isValid     = true;
         std::array      Position    = { 0.1f, 0.5f, 0.6f };
 
-        if (TextFile.WriteComment(
+        if (auto Err = TextFile.WriteComment(
             "----------------------------------------------------\n"
             " Example that shows how to use user types\n"
             "----------------------------------------------------\n"
-        ).isError(Error)) return Error;
+        ); Err ) return Err;
 
         //
         // Tell the file system about the user types
@@ -323,47 +318,47 @@ namespace xtextfile::unit_test
         //
         // Save/Load a record
         //
-        if (TextFile.Record(Error, "TestUserTypes"
-            , [&](std::size_t, xtextfile::err& Error)
+        if ( auto Err = TextFile.Record( "TestUserTypes"
+            , [&](std::size_t, xerr& Error)
             {
                 0
-                || TextFile.Field(v3.m_CRC, "Position", Position[0], Position[1], Position[2]).isError(Error)
-                || TextFile.Field(bo.m_CRC, "IsValid", isValid).isError(Error)
-                || TextFile.Field(str.m_CRC, "Name", Name ).isError(Error)
+                || (Error = TextFile.Field(v3.m_CRC, "Position", Position[0], Position[1], Position[2]))
+                || (Error = TextFile.Field(bo.m_CRC, "IsValid", isValid))
+                || (Error = TextFile.Field(str.m_CRC, "Name", Name ))
                 ;
             }
-        )) return Error;
+        ); Err ) return Err;
 
         //
         // Save/Load a record
         //
-        if (TextFile.Record(Error, "VariableUserTypes"
-            , [&](std::size_t& C, xtextfile::err&)
+        if (auto Err = TextFile.Record( "VariableUserTypes"
+            , [&](std::size_t& C, xerr&)
             {
                 if (isRead) assert(C == 3);
                 else        C = 3;
             }
-            , [&](std::size_t i, xtextfile::err& Error)
+            , [&](std::size_t i, xerr& Error)
             {
                 switch (i)
                 {
-                case 0: if (TextFile.Field(v3.m_CRC, "Value:?", Position[0], Position[1], Position[2]).isError(Error)) return; break;
-                case 1: if (TextFile.Field(bo.m_CRC, "Value:?", isValid).isError(Error)) return; break;
-                case 2: if (TextFile.Field(str.m_CRC, "Value:?", Name ).isError(Error)) return; break;
+                case 0: if (Error = TextFile.Field(v3.m_CRC, "Value:?", Position[0], Position[1], Position[2]); Error ) return; break;
+                case 1: if (Error = TextFile.Field(bo.m_CRC, "Value:?", isValid); Error) return; break;
+                case 2: if (Error = TextFile.Field(str.m_CRC, "Value:?", Name ); Error) return; break;
                 }
 
-                TextFile.Field(bo.m_CRC, "IsValid", isValid).isError(Error);
+                Error = TextFile.Field(bo.m_CRC, "IsValid", isValid);
             }
-        )) return Error;
+        ); Err) return Err;
 
-        return Error;
+        return {};
     }
 
     //------------------------------------------------------------------------------
     // Test different types
     //------------------------------------------------------------------------------
     inline
-    xtextfile::err Test01(std::wstring_view FileName, bool isRead, xtextfile::file_type FileType, xtextfile::flags Flags) noexcept
+    xerr Test01(std::wstring_view FileName, bool isRead, xtextfile::file_type FileType, xtextfile::flags Flags) noexcept
     {
         xtextfile::stream   TextFile;
 
@@ -372,22 +367,24 @@ namespace xtextfile::unit_test
         //
         if (auto Err = TextFile.Open(isRead, FileName, FileType, Flags); Err)
         {
-            printf( "%s \n", Err.m_pMessage);
-            return xtextfile::err::create_f<"Open file operation failed">();
+            std::cout << "Failed to open " << Err.getMessage() << "\n";
+            return Err;
         }
 
         //
         // Run tests
         // 
-        xtextfile::err Error;
+        if (auto Err = AllTypes(TextFile, isRead, Flags); Err) 
+            return Err;
 
-        if (AllTypes(TextFile, isRead, Flags).isError(Error)) return Error;
+        if (auto Err = SimpleVariableTypes(TextFile, isRead, Flags); Err) 
+            return Err;
 
-        if (SimpleVariableTypes(TextFile, isRead, Flags).isError(Error)) return Error;
-
-        if (UserTypes(TextFile, isRead, Flags).isError(Error)) return Error;
+        if (auto Err = UserTypes(TextFile, isRead, Flags); Err ) 
+            return Err;
       
-        if (Properties(TextFile, isRead, Flags).isError(Error)) return Error;
+        if (auto Err = Properties(TextFile, isRead, Flags); Err ) 
+            return Err;
 
         //
         // When we are reading and we are done dealing with records we can check if we are done reading a file like this
@@ -395,24 +392,23 @@ namespace xtextfile::unit_test
         if (isRead && TextFile.isEOF())
             return {};
 
-        return Error;
+        return {};
     }
 
     //-----------------------------------------------------------------------------------------
 
     void Test(void)
     {
-        xtextfile::err Error;
         constexpr static auto FileName = L"./x64/TextFileTest.la";
-
+        xerr Error;
         //
         // Test write and read (Text Style)
         //
         if (true) if (0
-            || Test01(std::format(L"{}{}.txt", FileName, 1).c_str(), false, xtextfile::file_type::TEXT, {xtextfile::flags{}}).isError(Error)
-            || Test01(std::format(L"{}{}.txt", FileName, 1).c_str(), true,  xtextfile::file_type::TEXT, { xtextfile::flags{} }).isError(Error)
-            || Test01(std::format(L"{}{}.txt", FileName, 2).c_str(), false, xtextfile::file_type::TEXT, { .m_isWriteFloats = true }).isError(Error)
-            || Test01(std::format(L"{}{}.txt", FileName, 2).c_str(), true,  xtextfile::file_type::TEXT, { .m_isWriteFloats = true }).isError(Error)
+            || (Error = Test01(std::format(L"{}{}.txt", FileName, 1).c_str(), false, xtextfile::file_type::TEXT, {xtextfile::flags{}}))
+            || (Error = Test01(std::format(L"{}{}.txt", FileName, 1).c_str(), true,  xtextfile::file_type::TEXT, { xtextfile::flags{} }))
+            || (Error = Test01(std::format(L"{}{}.txt", FileName, 2).c_str(), false, xtextfile::file_type::TEXT, { .m_isWriteFloats = true }))
+            || (Error = Test01(std::format(L"{}{}.txt", FileName, 2).c_str(), true,  xtextfile::file_type::TEXT, { .m_isWriteFloats = true }))
             )
         {
             assert(false);
@@ -422,17 +418,14 @@ namespace xtextfile::unit_test
         // Test write and read (Binary Style)
         //
         if (true) if (0
-            || Test01(std::format(L"{}{}.bin", FileName, 1).c_str(), false, xtextfile::file_type::BINARY, { xtextfile::flags{} }).isError(Error)
-            || Test01(std::format(L"{}{}.bin", FileName, 1).c_str(), true,  xtextfile::file_type::BINARY, { xtextfile::flags{} }).isError(Error)
-            || Test01(std::format(L"{}{}.bin", FileName, 2).c_str(), false, xtextfile::file_type::BINARY, { .m_isWriteFloats = true }).isError(Error)
-            || Test01(std::format(L"{}{}.bin", FileName, 2).c_str(), true,  xtextfile::file_type::BINARY, { .m_isWriteFloats = true }).isError(Error)
+            || (Error = Test01(std::format(L"{}{}.bin", FileName, 1).c_str(), false, xtextfile::file_type::BINARY, { xtextfile::flags{} }))
+            || (Error = Test01(std::format(L"{}{}.bin", FileName, 1).c_str(), true, xtextfile::file_type::BINARY, { xtextfile::flags{} }))
+            || (Error = Test01(std::format(L"{}{}.bin", FileName, 2).c_str(), false, xtextfile::file_type::BINARY, { .m_isWriteFloats = true }))
+            || (Error = Test01(std::format(L"{}{}.bin", FileName, 2).c_str(), true,  xtextfile::file_type::BINARY, { .m_isWriteFloats = true }))
             )
         {
             assert(false);
         }
     }
-
-
-
-
 }
+
