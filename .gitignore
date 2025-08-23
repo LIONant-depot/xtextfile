@@ -2,10 +2,5 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
-/build/UnitTest.vs2022/.vs/UnitTest.vs2022
-/build/UnitTest.vs2022/UnitTest.vs2022/x64
-/build/UnitTest.vs2022/x64
-/build/xtextfile_unit_test.vs2022/.vs
-/build/xtextfile_unit_test.vs2022/xtextfil.349fb1ea/x64/Debug
-/build/xtextfile_unit_test.vs2022/x64
-/build/xtextfile_unit_test.vs2022/CMakeFiles/3.30.3/CompilerIdCXX/Debug/CompilerIdCXX.tlog/CL.command.1.tlog
+/build/xtextfile_unit_test.vs2022
+/dependencies
