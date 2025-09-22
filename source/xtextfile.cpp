@@ -540,11 +540,11 @@ namespace xtextfile
     {
         switch( Type )
         {
-            // Lets verify that the user_types enter a valid atomic err
+            // Let's verify that the user_types enter a valid atomic err
             case 'f': case 'F':
             case 'd': case 'D':
             case 'c': case 'C':
-            case 's': 
+            case 's': case 'S':
             case 'g': case 'G':
             case 'h': case 'H':
             return true;
