@@ -170,11 +170,10 @@ namespace xtextfile::details
         }
 
         std::wstring result;
-        // Rough estimate: 6 chars per \uXXXX
-        result.reserve(input.size() / 6); 
+        result.reserve(input.size()); 
 
         size_t i = 0;
-        while (i + 5 < input.size()) 
+        while (i < input.size()) 
         {
             if (input[i] == '\\' && input[i + 1] == 'u') 
             {
