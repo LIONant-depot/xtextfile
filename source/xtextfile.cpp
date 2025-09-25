@@ -193,6 +193,11 @@ namespace xtextfile::details
                 result.push_back(static_cast<wchar_t>(code));
                 i += 6;
             }
+            if (input[i] == '\\' && input[i + 1] == '\\')
+            {
+                result.push_back(static_cast<unsigned char>(input[i]));
+                i += 2;
+            }
             else 
             {
                 FALLBACK_ASCII:
