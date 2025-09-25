@@ -172,31 +172,41 @@ namespace xtextfile::details
         std::wstring result;
         result.reserve(input.size()); 
 
-        size_t i = 0;
-        while (i < input.size()) 
+        std::size_t i = 0;
+        const std::size_t Length = input.length();
+        while (i < Length)
         {
-            if (input[i] == '\\' && input[i + 1] == 'u') 
+            // If we are not at the end and we have a code...
+            if (input[i] == '\\' && (i+1) < Length )
             {
-                unsigned int code = 0;
-
-                // Parse 4 hex digits directly
-                for (int j = 0; j < 4; ++j) 
+                auto nextc = input[i + 1];
+                if (nextc == 'u')
                 {
-                    char c = input[i + 2 + j];
-                    code <<= 4;
-                         if (c >= '0' && c <= '9') code |= c - '0';
-                    else if (c >= 'A' && c <= 'F') code |= c - 'A' + 10;
-                    else if (c >= 'a' && c <= 'f') code |= c - 'a' + 10;
-                    else goto FALLBACK_ASCII; // Invalid hex, fallback
-                }
+                    unsigned int code = 0;
 
-                result.push_back(static_cast<wchar_t>(code));
-                i += 6;
-            }
-            if (input[i] == '\\' && input[i + 1] == '\\')
-            {
-                result.push_back(static_cast<unsigned char>(input[i]));
-                i += 2;
+                    // Parse 4 hex digits directly
+                    for (int j = 0; j < 4; ++j) 
+                    {
+                        char c = input[i + 2 + j];
+                        code <<= 4;
+                             if (c >= '0' && c <= '9') code |= c - '0';
+                        else if (c >= 'A' && c <= 'F') code |= c - 'A' + 10;
+                        else if (c >= 'a' && c <= 'f') code |= c - 'a' + 10;
+                        else goto FALLBACK_ASCII; // Invalid hex, fallback
+                    }
+
+                    result.push_back(static_cast<wchar_t>(code));
+                    i += 6;
+                }
+                else if (nextc == '\\')
+                {
+                    result.push_back(static_cast<unsigned char>(input[i]));
+                    i += 2;
+                }
+                else
+                {
+                    goto FALLBACK_ASCII;
+                }
             }
             else 
             {
