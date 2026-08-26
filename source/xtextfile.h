@@ -164,51 +164,88 @@ namespace xtextfile
     };
 
     //-----------------------------------------------------------------------------------------------------
+    union states
+    {
+        std::uint32_t       m_Value{ 0 };
+        struct
+        {
+              bool            m_isView        : 1       // means we don't own the pointer
+                            , m_isEOF         : 1       // We have reach end of file so no io operations make sense after this
+                            , m_isBinary      : 1       // Tells if we are dealing with a binary file or text file
+                            , m_isEndianSwap  : 1       // Tells if when reading we should swap endians
+                            , m_isReading     : 1       // Tells the system whether we are reading or writing
+                            , m_isSaveFloats  : 1;      // Save floats as hex
+        };
+    };
+
+    //-----------------------------------------------------------------------------------------------------
+    // file_base - the abstract backing store xtextfile::stream actually talks to. Every generic piece
+    // of read/write/parsing logic (the templated Read<T>/Write<T>, getC, WriteStr/WriteFmtStr/
+    // WriteChar/WriteData, ReadWhiteSpace, HandleDynamicTable, ReadingErrorCheck) lives HERE, expressed
+    // purely in terms of the pure-virtual primitives below - a new backing store only ever implements
+    // those primitives, never re-derives any parsing/formatting logic. Public (not under details::) on
+    // purpose: this is the extension point a caller (xundo, say) derives their own backing store from.
+    //-----------------------------------------------------------------------------------------------------
+    struct file_base
+    {
+        states          m_States    = {};
+
+                        file_base           ( void )                                                                    noexcept = default;
+        virtual        ~file_base           ( void )                                                                    noexcept = default;
+
+        // ---- pure virtual primitives - every backing store implements all of these, even if some are
+        // no-ops for it (e.g. a memory-backed file's openForReading might just ignore Path entirely -
+        // that's the implementer's call, not something this interface dictates) ----
+        virtual xerr    openForReading      ( const std::wstring_view Path, bool isBinary )                              noexcept = 0;
+        virtual xerr    openForWriting      ( const std::wstring_view Path, bool isBinary )                              noexcept = 0;
+        virtual xerr    ReadRaw             ( void* pDst, std::size_t Size, std::size_t Count )                          noexcept = 0;
+        virtual xerr    WriteRaw            ( const void* pSrc, std::size_t Size, std::size_t Count )                    noexcept = 0;
+        virtual int     Tell                ( void )                                                                     noexcept = 0;
+        virtual xerr    Seek                ( int Position )                                                             noexcept = 0;
+        virtual void    close               ( void )                                                                     noexcept = 0;
+
+        // ---- generic, backend-agnostic - implemented once, here, in terms of the primitives above ----
+        xerr            ReadingErrorCheck   ( void )                                                                    noexcept;
+        template< typename T >
+        xerr            Read                ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
+        xerr            getC                ( int& c )                                                                  noexcept;
+        xerr            WriteStr            ( std::string_view Buffer )                                                 noexcept;
+        xerr            WriteFmtStr         ( const char* pFmt, ... )                                                   noexcept;
+        template< typename T >
+        xerr            Write               ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
+        xerr            WriteChar           ( char C, int Count = 1 )                                                   noexcept;
+        xerr            WriteData           ( std::string_view Buffer )                                                 noexcept;
+        xerr            ReadWhiteSpace      ( int& c )                                                                  noexcept;
+        xerr            HandleDynamicTable  ( int& Count )                                                              noexcept;
+    };
+
+    //-----------------------------------------------------------------------------------------------------
     // private interface
     //-----------------------------------------------------------------------------------------------------
     namespace details
     {
         //-----------------------------------------------------------------------------------------------------
-        union states
-        {
-            std::uint32_t       m_Value{ 0 };
-            struct
-            {
-                  bool            m_isView        : 1       // means we don't own the pointer
-                                , m_isEOF         : 1       // We have reach end of file so no io operations make sense after this
-                                , m_isBinary      : 1       // Tells if we are dealing with a binary file or text file
-                                , m_isEndianSwap  : 1       // Tells if when reading we should swap endians
-                                , m_isReading     : 1       // Tells the system whether we are reading or writing
-                                , m_isSaveFloats  : 1;      // Save floats as hex
-            };
-        };
-
+        // file - the default, disk-backed file_base. Everything stream did through file before keeps
+        // working unchanged; only the primitives are disk-specific now (fread_s/fwrite/ftell/fseek/
+        // fclose), everything else (Read<T>, getC, WriteStr, ...) is inherited from file_base as-is.
         //-----------------------------------------------------------------------------------------------------
-        struct file
+        struct file : xtextfile::file_base
         {
             std::FILE*      m_pFP       = { nullptr };
-            states          m_States    = {};
 
                             file                ( void )                                                                    noexcept = default;
-                           ~file                ( void )                                                                    noexcept;
+                           ~file                ( void )                                                                    noexcept override;
 
             file&           setup               ( std::FILE& File, states States )                                          noexcept;
-            xerr            openForReading      ( const std::wstring_view FilePath, bool isBinary )                         noexcept;
-            xerr            openForWriting      ( const std::wstring_view FilePath, bool isBinary )                         noexcept;
-            void            close               ( void )                                                                    noexcept;
-            xerr            ReadingErrorCheck   ( void )                                                                    noexcept;
-            template< typename T >
-            xerr            Read                ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
-            xerr            getC                ( int& c )                                                                  noexcept;
-            xerr            WriteStr            ( std::string_view Buffer )                                                 noexcept;
-            xerr            WriteFmtStr         ( const char* pFmt, ... )                                                   noexcept;
-            template< typename T >
-            xerr            Write               ( T& Buffer, int Size = sizeof(T), int Count = 1 )                          noexcept;
-            xerr            WriteChar           ( char C, int Count = 1 )                                                   noexcept;
-            xerr            WriteData           ( std::string_view Buffer )                                                 noexcept;
-            xerr            ReadWhiteSpace      ( int& c )                                                                  noexcept;
-            xerr            HandleDynamicTable  ( int& Count )                                                              noexcept;
-            int             Tell                ()                                                                          noexcept;
+
+            // ---- file_base overrides ----
+            xerr            openForReading      ( const std::wstring_view Path, bool isBinary )                             noexcept override;
+            xerr            openForWriting      ( const std::wstring_view Path, bool isBinary )                             noexcept override;
+            xerr            ReadRaw             ( void* pDst, std::size_t Size, std::size_t Count )                         noexcept override;
+            xerr            WriteRaw            ( const void* pSrc, std::size_t Size, std::size_t Count )                   noexcept override;
+            int             Tell                ( void )                                                                     noexcept override;
+            xerr            Seek                ( int Position )                                                            noexcept override;
+            void            close               ( void )                                                                    noexcept override;
         };
 
         //-----------------------------------------------------------------------------------------------------
@@ -279,6 +316,16 @@ namespace xtextfile
         void                            close               ( void )                                                                    noexcept;
                         xerr            Open                ( bool isRead, std::wstring_view View, file_type FileType, flags Flags={} ) noexcept;
 
+        // Attaches an already-constructed, caller-owned file_base instead of opening a real disk
+        // file - m_pFile points at it for the lifetime of this stream (or until the next Open()/
+        // close()). Path/on-disk sniffing (extension hints, binary-signature auto-detect) is disk-
+        // specific and skipped entirely here; FileType is taken at face value from the caller instead.
+        // File's lifetime is the CALLER's responsibility - stream never owns or deletes it.
+                        xerr            Open                ( bool isRead, file_base& File, file_type FileType, flags Flags={} ) noexcept;
+
+        inline          file_base&      getFile             ( void )                                                            noexcept { return *m_pFile; }
+        inline          const file_base& getFile            ( void )                                                    const   noexcept { return *m_pFile; }
+
                         template< std::size_t N, typename... T_ARGS >
         inline          xerr            Field               ( crc32 UserType, const char(&pFieldName)[N], T_ARGS&... Args )    noexcept;
 
@@ -303,9 +350,9 @@ namespace xtextfile
                         xerr            WriteComment        ( const std::string_view Comment )                                  noexcept;
 
 
-        constexpr       bool            isReading           ( void )                                                            const   noexcept { return m_File.m_States.m_isReading; }
-        constexpr       bool            isEOF               ( void )                                                            const   noexcept { return m_File.m_States.m_isEOF; }
-        constexpr       bool            isWriteFloats       ( void )                                                            const   noexcept { return m_File.m_States.m_isSaveFloats; }
+        inline          bool            isReading           ( void )                                                            const   noexcept { return m_pFile->m_States.m_isReading; }
+        inline          bool            isEOF               ( void )                                                            const   noexcept { return m_pFile->m_States.m_isEOF; }
+        inline          bool            isWriteFloats       ( void )                                                            const   noexcept { return m_pFile->m_States.m_isSaveFloats; }
         inline         std::string_view getRecordName       ( void )                                                            const   noexcept { return m_Record.m_Name.data();  }
         inline          int             getRecordCount      ( void )                                                            const   noexcept { return m_Record.m_Count; }
         inline          int             getUserTypeCount    ( void )                                                            const   noexcept { return static_cast<int>(m_UserTypes.size()); }
@@ -315,7 +362,7 @@ namespace xtextfile
 
     protected:
 
-                        stream&         setup               ( std::FILE& File, details::states States )                                 noexcept;
+                        stream&         setup               ( std::FILE& File, states States )                                          noexcept;
                         xerr            openForReading      ( const std::wstring_view FilePath )                                        noexcept;
                         xerr            openForWriting      ( const std::wstring_view FilePath
                                                                 , file_type FileType, flags Flags )                                     noexcept;
@@ -349,7 +396,8 @@ namespace xtextfile
 
     protected:
 
-        details::file                                       m_File                  {};     // File pointer
+        details::file                                       m_DefaultFile           {};     // the disk-backed default - embedded by value, no allocation for the common case
+        file_base*                                          m_pFile                 { &m_DefaultFile }; // everything stream does goes through this - see Open()'s two overloads
         details::record                                     m_Record                {};     // This contains information about the current record
         std::vector<details::column>                        m_Columns               {};
         std::vector<char>                                   m_Memory                {};

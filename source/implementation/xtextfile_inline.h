@@ -108,7 +108,7 @@ namespace xtextfile
     xerr stream::Record( const char(&Str)[N], TT&& RecordStar, T&& Callback) noexcept
     {
         xerr Error;
-        if (m_File.m_States.m_isReading)
+        if (m_pFile->m_States.m_isReading)
         {
             if (std::strcmp(getRecordName().data(), Str) != 0)
             {
@@ -188,7 +188,7 @@ namespace xtextfile
         ( Str,
         [&](std::size_t& C, xerr& Error) noexcept
         {
-            if (m_File.m_States.m_isReading)
+            if (m_pFile->m_States.m_isReading)
             {
                 assert(C == 1);
             }
@@ -217,7 +217,7 @@ namespace xtextfile
     template< std::size_t N > inline
     xerr stream::RecordLabel(const char(&Str)[N]) noexcept
     {
-        if (m_File.m_States.m_isReading)
+        if (m_pFile->m_States.m_isReading)
         {
             if (getRecordName() != Str)
                 return { state::UNEXPECTED_RECORD, "Unexpected record" };
