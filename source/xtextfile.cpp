@@ -778,26 +778,24 @@ namespace xtextfile
     }
 
     //------------------------------------------------------------------------------------------------
-    // Memory-backed / caller-owned Open: points m_pFile at File (caller keeps ownership - close()
+    // Memory-backed / caller-owned attach: points m_pFile at File (caller keeps ownership - close()
     // will call File.close() but never delete it) and skips all disk-specific sniffing (extension
-    // hinting, binary-signature probing) since the caller already knows FileType. Mirrors only the
-    // generic setup steps openForReading/openForWriting do beyond that sniffing.
+    // hinting, binary-signature probing) since File is assumed already open. Every other Open()
+    // overload's parameter (read/write, binary/text, endian swap, float precision) is just a
+    // File.m_States field the caller already set while preparing File - nothing left to duplicate
+    // here. Mirrors only the generic setup steps openForReading/openForWriting do beyond that.
     //------------------------------------------------------------------------------------------------
 
-    xerr stream::Open( bool isRead, file_base& File, file_type FileType, flags Flags ) noexcept
+    xerr stream::UseFileBase( file_base& File ) noexcept
     {
         m_pFile = &File;
 
-        m_pFile->m_States.m_isBinary  = (FileType == file_type::BINARY);
-        m_pFile->m_States.m_isReading = isRead;
-        m_pFile->m_States.m_isView    = false;
-
         // Same auto-close-on-failure guard the path-based overloads use - matches their behavior
-        // (a failed Open never leaves m_pFile pointing at a half-initialized file_base).
+        // (a failed attach never leaves m_pFile pointing at a half-initialized file_base).
         xerr Error;
         xerr::cleanup CleanUp(Error, [&] { close(); });
 
-        if( isRead )
+        if( m_pFile->m_States.m_isReading )
         {
             m_pFile->m_States.m_isEOF = false;
 
@@ -809,16 +807,13 @@ namespace xtextfile
         }
         else
         {
-            if( FileType == file_type::BINARY )
+            if( m_pFile->m_States.m_isBinary )
             {
                 // Write binary signature
                 const std::uint32_t Signature = std::uint32_t('NOIL');
                 if( Error = m_pFile->Write( Signature ); Error )
                     return Error;
             }
-
-            m_pFile->m_States.m_isEndianSwap = Flags.m_isWriteEndianSwap;
-            m_pFile->m_States.m_isSaveFloats = Flags.m_isWriteFloats;
 
             m_Memory.clear();
             if( m_Memory.capacity() < 2048 ) m_Memory.resize(m_Memory.size() + 2048 );

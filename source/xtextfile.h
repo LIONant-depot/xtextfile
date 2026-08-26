@@ -318,10 +318,12 @@ namespace xtextfile
 
         // Attaches an already-constructed, caller-owned file_base instead of opening a real disk
         // file - m_pFile points at it for the lifetime of this stream (or until the next Open()/
-        // close()). Path/on-disk sniffing (extension hints, binary-signature auto-detect) is disk-
-        // specific and skipped entirely here; FileType is taken at face value from the caller instead.
-        // File's lifetime is the CALLER's responsibility - stream never owns or deletes it.
-                        xerr            Open                ( bool isRead, file_base& File, file_type FileType, flags Flags={} ) noexcept;
+        // close()). Assumes File is already open and fully configured (m_States.m_isReading/
+        // m_isBinary/m_isEndianSwap/m_isSaveFloats all set by whatever prepared it) - every one of
+        // Open()'s other parameters is already state File itself carries, so there's nothing left
+        // to pass beyond File. File's lifetime is the CALLER's responsibility - stream never owns
+        // or deletes it.
+                        xerr            UseFileBase         ( file_base& File )                                                  noexcept;
 
         inline          file_base&      getFile             ( void )                                                            noexcept { return *m_pFile; }
         inline          const file_base& getFile            ( void )                                                    const   noexcept { return *m_pFile; }
