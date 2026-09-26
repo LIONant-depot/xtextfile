@@ -916,6 +916,17 @@ namespace xtextfile
         m_iMemOffet     = 0;
         m_nColumns      = 0;
 
+        // Empty records: emit "[ name : 0 ]" only. WriteLine asserts m_iLine < m_Count, so a
+        // Count==0 Record would otherwise write NOTHING - leaving the next component's
+        // xProperties to be mis-read (Box3dBody empty-table case). Do NOT emit column headers
+        // ("{ Name:s Value:? }") for Count==0 - those orphan lines break subsequent ReadRecord
+        // and can wipe ActiveEntities on a round-trip save.
+        if (Count == 0 && m_Record.m_bWriteCount)
+        {
+            if (auto Err = m_pFile->WriteFmtStr("\n[ %s : %d ]\n", m_Record.m_Name.data(), 0); Err)
+                return Err;
+        }
+
         return {};
     }
 
