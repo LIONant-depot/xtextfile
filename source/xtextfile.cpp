@@ -921,7 +921,9 @@ namespace xtextfile
         // xProperties to be mis-read (Box3dBody empty-table case). Do NOT emit column headers
         // ("{ Name:s Value:? }") for Count==0 - those orphan lines break subsequent ReadRecord
         // and can wipe ActiveEntities on a round-trip save.
-        if (Count == 0 && m_Record.m_bWriteCount)
+        // Text only: a binary file has no text in it. The record header of a binary file is written with its first line, so an empty table is simply not there (the readers
+        // of a binary file skip a table they do not find: SerializeGameState does), where this text made the next record unreadable.
+        if (Count == 0 && m_Record.m_bWriteCount && !m_pFile->m_States.m_isBinary)
         {
             if (auto Err = m_pFile->WriteFmtStr("\n[ %s : %d ]\n", m_Record.m_Name.data(), 0); Err)
                 return Err;
