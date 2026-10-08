@@ -220,7 +220,7 @@ namespace xtextfile
         if (m_pFile->m_States.m_isReading)
         {
             if (getRecordName() != Str)
-                return { state::UNEXPECTED_RECORD, "Unexpected record" };
+                return xerr::create<state::UNEXPECTED_RECORD, "Unexpected record">();
 
             return ReadRecord();
         }

@@ -257,10 +257,15 @@ namespace xtextfile::details
             }
         }
     #else
-        m_pFile->m_pFP = fopen( wstring_to_utf8(FilePath).c_str(), pAttr );
-        if( m_pFP )
+        m_pFP = std::fopen( std::filesystem::path(std::wstring(FilePath)).string().c_str(), isBinary ? "rb" : "r" );
+        if( m_pFP == nullptr )
         {
-            return xerr_failure_s( "Fail to open a file");
+            switch (errno)
+            {
+            case ENOENT: return xerr::create  <state::FILE_NOT_FOUND, "Error: File not found: for reading">();
+            case EACCES: return xerr::create_f<state, "Error: Permission denied: for reading">();
+            default:     return xerr::create_f<state, "Error: Failed to open file for reading">();
+            }
         }
     #endif
 
@@ -290,10 +295,15 @@ namespace xtextfile::details
             }
         }
     #else
-        m_pFile->m_pFP = fopen( wstring_to_utf8(FilePath).c_str(), pAttr );
-        if( m_pFP )
+        m_pFP = std::fopen( std::filesystem::path(std::wstring(FilePath)).string().c_str(), isBinary ? "wb" : "w" );
+        if( m_pFP == nullptr )
         {
-            return xerr_failure_s( "Fail to open a file");
+            switch (errno)
+            {
+            case ENOENT: return xerr::create  <state::FILE_NOT_FOUND, "Error: File not found: for writing">();
+            case EACCES: return xerr::create_f<state, "Error: Permission denied: for writing">();
+            default:     return xerr::create_f<state, "Error: Failed to open file for writing">();
+            }
         }
     #endif
 
