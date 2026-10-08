@@ -3,6 +3,8 @@
 #include <cstdarg>
 #include <filesystem>
 #include <variant>
+#include <cstring>
+#include <cwchar>          // WCHAR_MAX: binary wide strings are UTF-16 in the file, converted where wchar_t is 32 bits
 
 //-----------------------------------------------------------------------------------------------------
 //-----------------------------------------------------------------------------------------------------
@@ -1266,6 +1268,22 @@ namespace xtextfile
 
                         if ( p->empty() == false )
                         {
+                        #if WCHAR_MAX > 0xFFFF
+                            // The binary format keeps UTF-16 code units (what Windows writes and what the reader takes, 2 bytes each);
+                            // wchar_t is 32 bits here, so convert instead of copying the raw wchar_t bytes (the reader stopped after the first character)
+                            for (const wchar_t wc : *p)
+                            {
+                                auto Put = [&](std::uint16_t U) noexcept
+                                {
+                                    if (m_pFile->m_States.m_isEndianSwap) U = endian::Convert(U);
+                                    std::memcpy(&m_Memory[m_iMemOffet], &U, 2);
+                                    m_iMemOffet += 2;
+                                };
+                                const auto cp = static_cast<std::uint32_t>(wc);
+                                if (cp > 0xFFFF) { const auto v = cp - 0x10000; Put(static_cast<std::uint16_t>(0xD800 + (v >> 10))); Put(static_cast<std::uint16_t>(0xDC00 + (v & 0x3FF))); }
+                                else             Put(static_cast<std::uint16_t>(cp));
+                            }
+                        #else
                             auto length = static_cast<int>(p->length() * sizeof(wchar_t));
                             memcpy( &m_Memory[m_iMemOffet], p->data(), length );
                             if (m_pFile->m_States.m_isEndianSwap)
@@ -1277,6 +1295,7 @@ namespace xtextfile
                                 }
                             }
                             m_iMemOffet += length;
+                        #endif
                         }
 
                         // make sure it is properly terminated
@@ -2342,7 +2361,26 @@ namespace xtextfile
                 }
                 else if constexpr (std::is_same_v<t, std::wstring*>)
                 {
+                #if WCHAR_MAX > 0xFFFF
+                    if (m_pFile->m_States.m_isBinary)
+                    {
+                        // UTF-16 code units in the file (see the writer); wchar_t is 32 bits here
+                        p->clear();
+                        for (const char* pU = &m_Memory[iData];; pU += 2)
+                        {
+                            std::uint16_t U; std::memcpy(&U, pU, 2);
+                            if (U == 0) break;
+                            if (U >= 0xD800 && U < 0xDC00)
+                            {
+                                std::uint16_t Lo; std::memcpy(&Lo, pU + 2, 2);
+                                if (Lo >= 0xDC00 && Lo < 0xE000) { p->push_back(static_cast<wchar_t>(0x10000 + ((U - 0xD800) << 10) + (Lo - 0xDC00))); pU += 2; continue; }
+                            }
+                            p->push_back(static_cast<wchar_t>(U));
+                        }
+                    }
+                #else
                     if (m_pFile->m_States.m_isBinary) *p = reinterpret_cast<wchar_t*>(&m_Memory[iData]);
+                #endif
                     else                            *p = details::ascii_escape_to_wstring( &m_Memory[iData] );
                 }
                 else
