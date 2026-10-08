@@ -341,6 +341,29 @@ namespace xtextfile::details
         }
     #else
         // Linux port: this branch was empty (nothing was ever read off MSVC)
+        if ( !m_States.m_isBinary )
+        {
+            // Text mode ("r"): match MSVC's "rt", which turns CRLF into LF - files saved on Windows can carry CRLF
+            auto*             p   = static_cast<unsigned char*>(pDst);
+            const std::size_t Tot = Size * Count;
+            for ( std::size_t i = 0; i < Tot; ++i )
+            {
+                int c = std::getc( m_pFP );
+                if ( c == '\r' )
+                {
+                    const int n = std::getc( m_pFP );
+                    if ( n == '\n' ) c = '\n';
+                    else if ( n != EOF ) std::ungetc( n, m_pFP );
+                }
+                if ( c == EOF )
+                {
+                    m_States.m_isEOF = true;
+                    return ReadingErrorCheck();
+                }
+                p[i] = static_cast<unsigned char>(c);
+            }
+            return {};
+        }
         if ( Count != std::fread( pDst, Size, Count, m_pFP ) )
         {
             m_States.m_isEOF = true;
