@@ -340,6 +340,12 @@ namespace xtextfile::details
             return ReadingErrorCheck();
         }
     #else
+        // Linux port: this branch was empty (nothing was ever read off MSVC)
+        if ( Count != std::fread( pDst, Size, Count, m_pFP ) )
+        {
+            m_States.m_isEOF = true;
+            return ReadingErrorCheck();
+        }
     #endif
         return {};
     }
@@ -355,6 +361,11 @@ namespace xtextfile::details
             return xerr::create_f< state, "Fail writing the required data" >();
         }
     #else
+        // Linux port: this branch was empty (nothing was ever written off MSVC)
+        if ( Count != std::fwrite( pSrc, Size, Count, m_pFP ) )
+        {
+            return xerr::create_f< state, "Fail writing the required data" >();
+        }
     #endif
         return {};
     }
