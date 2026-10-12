@@ -397,6 +397,40 @@ namespace xtextfile::unit_test
 
     //-----------------------------------------------------------------------------------------
 
+    //------------------------------------------------------------------------------
+    // Asking for a short field name when the file has a longer column must fail cleanly (it used to read past the end of the name asked for)
+    //------------------------------------------------------------------------------
+    inline
+    xerr FieldNameShorterThanColumn(std::wstring_view FileName) noexcept
+    {
+        constexpr xtextfile::user_defined_types bo { "BOOL", "c" };
+        constexpr static std::array Types{ bo };
+
+        {
+            xtextfile::stream TextFile;
+            if (auto Err = TextFile.Open(false, FileName, xtextfile::file_type::TEXT, {}); Err) return Err;
+            TextFile.AddUserTypes(Types);
+            bool isValid = true;
+            if (auto Err = TextFile.Record("LongNames", [&](std::size_t, xerr& Error)
+            {
+                Error = TextFile.Field(bo.m_CRC, "AColumnNameMuchLongerThanTheOneAskedFor", isValid);
+            }); Err) return Err;
+        }
+
+        xtextfile::stream TextFile;
+        if (auto Err = TextFile.Open(true, FileName, xtextfile::file_type::TEXT, {}); Err) return Err;
+        TextFile.AddUserTypes(Types);
+        xerr Asked;
+        (void)TextFile.Record("LongNames", [&](std::size_t, xerr& Error)
+        {
+            xtextfile::crc32 Type;
+            Asked = TextFile.ReadFieldUserType(Type, "AColumn");
+            Error = Asked;
+        });
+        if (!Asked) return xerr::create_f<xtextfile::state, "The short name was found among the long column names">();
+        return {};
+    }
+
     void Test(void)
     {
         constexpr static auto FileName = L"./x64/TextFileTest.la";
@@ -410,6 +444,14 @@ namespace xtextfile::unit_test
             || (Error = Test01(std::format(L"{}{}.txt", FileName, 2).c_str(), false, xtextfile::file_type::TEXT, { .m_isWriteFloats = true }))
             || (Error = Test01(std::format(L"{}{}.txt", FileName, 2).c_str(), true,  xtextfile::file_type::TEXT, { .m_isWriteFloats = true }))
             )
+        {
+            assert(false);
+        }
+
+        //
+        // A requested name that is shorter than a column of the file
+        //
+        if (Error = FieldNameShorterThanColumn(std::format(L"{}_short.txt", FileName)))
         {
             assert(false);
         }

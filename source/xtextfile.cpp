@@ -2169,20 +2169,22 @@ namespace xtextfile
             {
                 auto& Column = m_Columns[i];
 
-                if( pColumnName[ Column.m_NameLength ] != 0 )
-                {
-                    if( pColumnName[ Column.m_NameLength ] != ':' || pColumnName[ Column.m_NameLength+1 ] != '?' )
-                        continue;
-                }
-
-                // Make sure that we have a match
+                // Make sure that we have a match. Compare forward so we stop at the end of pColumnName: the column name may be longer than the
+                // name asked for, and looking at pColumnName[NameLength] first would read past its terminator.
                 {
                     int j;
-                    for( j=Column.m_NameLength-1; j >= 0 && (Column.m_Name[j] == pColumnName[j]) ; --j );
+                    for( j=0; j < Column.m_NameLength && (Column.m_Name[j] == pColumnName[j]) ; ++j );
 
                     // The string must not be the same
-                    if( j != -1 )
+                    if( j != Column.m_NameLength )
                         continue;
+
+                    // and the name asked for must end right there
+                    if( pColumnName[ Column.m_NameLength ] != 0 )
+                    {
+                        if( pColumnName[ Column.m_NameLength ] != ':' || pColumnName[ Column.m_NameLength+1 ] != '?' )
+                            continue;
+                    }
 
                     m_DataMapping.back() = i;
                     bFound = true;
