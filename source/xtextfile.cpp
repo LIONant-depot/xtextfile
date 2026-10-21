@@ -2787,7 +2787,7 @@ namespace xtextfile
                                     if( auto Err = m_pFile->getC(c); Err ) 
                                         return Err;
                                     
-                                } while( std::isdigit(c) || c == 'e' || c == 'E' || c == '-' );
+                                } while( std::isdigit(c) || c == 'e' || c == 'E' || c == '-' || (c == '+' && (Buffer[Size-1] == 'e' || Buffer[Size-1] == 'E')) );
                                 break;
                             }
                         }
