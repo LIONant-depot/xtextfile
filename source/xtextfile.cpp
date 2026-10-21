@@ -2194,7 +2194,7 @@ namespace xtextfile
 
             if( bFound == false )
             {
-                printf( "Error: Unable to find the field %s\n", pColumnName);
+                printf( "Warning: Unable to find the field %s\n", pColumnName);
                 return xerr::create<state::FIELD_NOT_FOUND, "Unable to find the filed requested" >();
             }
         }
